@@ -203,8 +203,10 @@ def auto_recover_robot():
         _start_robot(config, skip_db=True)
 
 def render():
-    # Tenta recuperar robô ao carregar a página
-    auto_recover_robot()
+    # Tenta recuperar robô apenas uma vez por sessão para evitar conflito com o botão PARAR
+    if not st.session_state.get("robot_recovery_checked"):
+        auto_recover_robot()
+        st.session_state["robot_recovery_checked"] = True
     
     st.markdown(
         "<h2 style='color:#c9d1d9;margin-bottom:0;'>🤖 Câmbio Auto</h2>"

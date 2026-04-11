@@ -33,7 +33,10 @@ def main():
     from utils.helpers import render_nav
     from view_cambio_auto import auto_recover_robot
     
-    auto_recover_robot()
+    if not st.session_state.get("robot_recovery_checked"):
+        auto_recover_robot()
+        st.session_state["robot_recovery_checked"] = True
+        
     render_nav()
     
     page = st.session_state.get("page", "dashboard")
