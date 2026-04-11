@@ -315,7 +315,7 @@ def render():
             3. A cada **5 minutos**, o robô busca a cotação atual
             4. Quando a cotação **atingir** o mínimo ou máximo configurado:
                - Uma notificação é gerada no painel
-               - Um alerta é enviado via Telegram/e-mail (se configurado no `.env`)
+               - Um alerta é enviado via Telegram/e-mail (se configurado)
             5. O monitoramento é válido por **24 horas**
             6. Você pode **renovar** ou **cancelar** a qualquer momento
 

@@ -72,7 +72,7 @@ def get_ai_analysis(valor_usd: float, valor_eur: float) -> dict:
     prompt = PROMPT_TEMPLATE.format(valor_usd=f"{valor_usd:.4f}", valor_eur=f"{valor_eur:.4f}")
 
     try:
-        print("[🤖 OpenAI] Consultando GPT-4.1-mini para análise de câmbio...")
+        print("[🤖 IA] Consultando para análise de câmbio...")
         response = _client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[
@@ -127,7 +127,7 @@ def _clean_text(text: str) -> str:
 def _fallback(valor_usd: float, valor_eur: float) -> dict:
     """Fallback caso a OpenAI não esteja disponível."""
     return {
-        "text": "⚠️ Análise indisponível. Configure a chave OPENAI_API_KEY no arquivo .env.",
+        "text": "⚠️ Análise indisponível.Certifique sua Internet",
         "source": "fallback",
         "usd_trend": "lateral",
         "eur_trend": "lateral",
