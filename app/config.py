@@ -47,11 +47,11 @@ PAGES = {
 }
 
 # ── Chaves de API ────────────────────────────────────────────────────────────
-EXCHANGE_API_KEY = os.getenv("EXCHANGE_API_KEY", "")
+EXCHANGE_API_KEY = os.getenv("EXCHANGE_API_KEY") or os.getenv("EXCHANGE_RATE_API_KEY") or ""
 NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
 
 # ── Telegram ─────────────────────────────────────────────────────────────────
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or ""
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 # ── WhatsApp (CallMeBot) ─────────────────────────────────────────────────────
@@ -61,8 +61,8 @@ WHATSAPP_PHONE = os.getenv("WHATSAPP_PHONE", "")
 # ── E-mail SMTP ──────────────────────────────────────────────────────────────
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_USER = os.getenv("SMTP_USER") or os.getenv("EMAIL_USER") or ""
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD") or os.getenv("EMAIL_PASS") or ""
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
