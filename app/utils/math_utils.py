@@ -56,7 +56,7 @@ Além do texto, retorne no FINAL da resposta um bloco JSON entre as tags <JSON> 
 """
 
 
-@st.cache_data(ttl=43200, persist="disk")
+@st.cache_data(persist="disk")
 def get_ai_analysis(valor_usd: float, valor_eur: float) -> dict:
     """
     Chama a OpenAI GPT-4.1-mini para análise de câmbio.

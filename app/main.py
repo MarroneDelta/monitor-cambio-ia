@@ -2,12 +2,6 @@
 Monitor de Câmbio — ponto de entrada principal
 """
 
-import os
-import sys
-
-# Garante que a raiz do app esteja no caminho de busca
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
 import streamlit as st
 from config import APP_CONFIG, PAGES
 from components.auth import check_auth, show_login
