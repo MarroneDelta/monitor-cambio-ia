@@ -1,0 +1,26 @@
+# Monitor de Câmbio — dependências Python
+# Testado com Python 3.11+
+
+# ── Web framework ────────────────────────────────────────────────
+streamlit>=1.35.0
+
+# ── HTTP e APIs ──────────────────────────────────────────────────
+requests>=2.31.0
+
+# ── Dados e gráficos ────────────────────────────────────────────
+pandas>=2.0.0
+plotly>=5.18.0
+
+# ── Segurança / autenticação ─────────────────────────────────────
+bcrypt>=4.1.0
+python-dotenv>=1.0.0
+
+# ── Notificações web push ────────────────────────────────────────
+pywebpush>=2.0.0
+
+# ── Parsing HTML / RSS ───────────────────────────────────────────
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+
+# ── Logging / extras ─────────────────────────────────────────────
+# schedule>=1.2.0   # alternativa ao threading (opcional)

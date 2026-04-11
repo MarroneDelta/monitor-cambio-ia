@@ -1,0 +1,273 @@
+/* ====================================================================
+   Monitor de Câmbio — Dark Mobile-First CSS
+   Paleta: fundo #0d1117 / cards #161b22 / borda #21262d / accent #00d4ff
+   ==================================================================== */
+
+/* ── Reset e base ───────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, [data-testid="stAppViewContainer"],
+[data-testid="stApp"] {
+    background-color: #0d1117 !important;
+    color: #c9d1d9 !important;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace !important;
+}
+
+/* Remove header padrão do Streamlit */
+[data-testid="stHeader"]              { display: none !important; }
+[data-testid="stToolbar"]             { display: none !important; }
+#MainMenu, footer, header             { visibility: hidden !important; }
+
+/* ── Scrollbar ──────────────────────────────────────────────────── */
+::-webkit-scrollbar               { width: 5px; height: 5px; }
+::-webkit-scrollbar-track         { background: #0d1117; }
+::-webkit-scrollbar-thumb         { background: #30363d; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover   { background: #484f58; }
+
+/* ── Sidebar ────────────────────────────────────────────────────── */
+[data-testid="stSidebar"] {
+    background-color: #010409 !important;
+    border-right: 1px solid #21262d !important;
+}
+[data-testid="stSidebar"] .stButton > button {
+    border-radius: 8px !important;
+    font-size: 0.85rem !important;
+    font-family: inherit !important;
+    text-align: left !important;
+    padding: 0.5rem 0.75rem !important;
+}
+
+/* ── Botões globais ─────────────────────────────────────────────── */
+.stButton > button {
+    background: #161b22 !important;
+    color: #c9d1d9 !important;
+    border: 1px solid #30363d !important;
+    border-radius: 8px !important;
+    font-family: inherit !important;
+    font-size: 0.85rem !important;
+    transition: all 0.2s ease !important;
+}
+.stButton > button:hover {
+    background: #21262d !important;
+    border-color: #00d4ff !important;
+    color: #00d4ff !important;
+}
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #0090b3, #00d4ff) !important;
+    color: #0d1117 !important;
+    border: none !important;
+    font-weight: 700 !important;
+}
+.stButton > button[kind="primary"]:hover {
+    opacity: 0.9 !important;
+    color: #0d1117 !important;
+}
+
+/* ── Inputs ─────────────────────────────────────────────────────── */
+input, textarea,
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input {
+    background: #0d1117 !important;
+    color: #c9d1d9 !important;
+    border: 1px solid #30363d !important;
+    border-radius: 8px !important;
+    font-family: inherit !important;
+}
+input:focus, textarea:focus {
+    border-color: #00d4ff !important;
+    box-shadow: 0 0 0 3px rgba(0,212,255,0.1) !important;
+    outline: none !important;
+}
+
+/* ── Selectbox / Multiselect ────────────────────────────────────── */
+[data-testid="stSelectbox"] > div > div,
+[data-testid="stMultiSelect"] > div > div {
+    background: #161b22 !important;
+    border-color: #30363d !important;
+    color: #c9d1d9 !important;
+    border-radius: 8px !important;
+}
+
+/* ── Número input ───────────────────────────────────────────────── */
+[data-testid="stNumberInput"] {
+    background: #0d1117 !important;
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────── */
+[data-testid="stTabs"] [role="tablist"] {
+    background: #161b22;
+    border-radius: 8px;
+    padding: 4px;
+    gap: 4px;
+    border-bottom: none !important;
+}
+[data-testid="stTabs"] button[role="tab"] {
+    color: #8892a4 !important;
+    border-radius: 6px !important;
+    font-size: 0.8rem !important;
+    font-family: inherit !important;
+    padding: 0.4rem 0.8rem !important;
+    transition: all 0.2s !important;
+}
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+    background: #00d4ff22 !important;
+    color: #00d4ff !important;
+    font-weight: 700 !important;
+}
+
+/* ── Expander ───────────────────────────────────────────────────── */
+[data-testid="stExpander"] {
+    background: #161b22 !important;
+    border: 1px solid #21262d !important;
+    border-radius: 10px !important;
+    overflow: hidden !important;
+}
+[data-testid="stExpander"] summary {
+    color: #8892a4 !important;
+    font-size: 0.85rem !important;
+}
+
+/* ── Spinner ────────────────────────────────────────────────────── */
+[data-testid="stSpinner"] { color: #00d4ff !important; }
+
+/* ── Hr ─────────────────────────────────────────────────────────── */
+hr { border-color: #21262d !important; margin: 1rem 0 !important; }
+
+/* ── Heading ────────────────────────────────────────────────────── */
+h1, h2, h3, h4 { color: #c9d1d9 !important; }
+
+/* ── Alert / Success / Error ────────────────────────────────────── */
+[data-testid="stAlert"] {
+    border-radius: 8px !important;
+    font-size: 0.85rem !important;
+}
+
+/* ====================================================================
+   Componentes customizados
+   ==================================================================== */
+
+/* Card de cotação */
+.rate-card {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 12px;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    transition: border-color 0.2s;
+}
+.rate-card:hover { border-color: #00d4ff44; }
+
+/* Card de previsão */
+.pred-card {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 12px;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+}
+.pred-item {
+    background: #0d1117;
+    border-radius: 8px;
+    padding: 0.5rem;
+}
+
+/* Card de login */
+.login-card {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 16px;
+    padding: 2rem;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+
+/* Card de status do robô */
+.robot-status-card {
+    background: #161b22;
+    border: 1px solid #00d4ff33;
+    border-radius: 12px;
+    padding: 1rem 1.2rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 0 20px rgba(0,212,255,0.05);
+}
+
+/* Item de notícia */
+.news-item {
+    padding: 0.7rem;
+    border-bottom: 1px solid #21262d;
+    transition: background 0.15s;
+}
+.news-item:hover { background: #161b22; border-radius: 8px; }
+
+/* Item de alerta */
+.alert-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem;
+    background: #161b22;
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    border-left: 3px solid #00d4ff;
+}
+
+/* Badges */
+.badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+}
+.badge-green { background: #26de8122; color: #26de81; border: 1px solid #26de8155; }
+.badge-red   { background: #ff6b6b22; color: #ff6b6b; border: 1px solid #ff6b6b55; }
+.badge-gray  { background: #8892a422; color: #8892a4; border: 1px solid #8892a455; }
+
+/* ====================================================================
+   Responsividade mobile
+   ==================================================================== */
+
+@media (max-width: 768px) {
+    /* Margem lateral mínima */
+    .block-container {
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+        padding-top: 1rem !important;
+    }
+
+    /* Cards ocupam 100% em mobile */
+    .rate-card, .pred-card, .login-card, .robot-status-card {
+        padding: 0.75rem;
+    }
+
+    /* Botões maiores para toque */
+    .stButton > button {
+        min-height: 44px !important;
+        font-size: 0.95rem !important;
+    }
+
+    /* Inputs maiores */
+    input, textarea {
+        min-height: 44px !important;
+        font-size: 1rem !important;
+    }
+
+    /* Gráficos menores */
+    .js-plotly-plot { max-height: 240px; }
+}
+
+@media (max-width: 480px) {
+    h2 { font-size: 1.2rem !important; }
+    .rate-card .stPlotlyChart { max-height: 50px; }
+}
+
+/* ====================================================================
+   Animação de entrada
+   ==================================================================== */
+@keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.rate-card, .pred-card, .robot-status-card {
+    animation: fadeSlideIn 0.35s ease both;
+}
