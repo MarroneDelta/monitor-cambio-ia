@@ -31,7 +31,7 @@ def show_login():
         email = st.text_input("E-mail")
         pwd = st.text_input("Senha", type="password")
         
-        if st.form_submit_button("🚀 Entrar", use_container_width=True):
+        if st.form_submit_button("🚀 Entrar", width="stretch"):
             if not email or not pwd:
                 st.warning("Por favor, preencha todos os campos.")
                 return

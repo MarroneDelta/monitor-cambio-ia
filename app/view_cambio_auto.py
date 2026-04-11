@@ -31,7 +31,8 @@ def _robot_loop(config: dict):
     expires    = config["expires"]
     user_email = config.get("user_email", "")
     channels   = config.get("channels", ["In-app (painel)"])
-    interval   = APP_CONFIG["refresh_interval"]
+    # O robô agora verifica a cada 10 minutos para garantir agilidade nos alertas
+    interval = 600
 
     print(f"\n[🤖 ROBÔ] Monitoramento iniciado para {currency} (Mín: {min_target} | Máx: {max_target})")
     print(f"[🤖 ROBÔ] Verificando a cada {interval/60:.1f} minutos...\n")

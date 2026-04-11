@@ -161,8 +161,9 @@ def dispatch_alert(
         email_ok = send_email(user_email, subject, msg)
 
     # In-app sempre (se selecionado ou padrão)
-    if "In-app (painel)" in channels:
-        push_in_app(currency, current_rate, trigger)
+    # In-app removido da thread para evitar erro de Contexto no Cloud
+    # Apenas logs e disparos externos (WA/TG/Email)
+    pass
 
     # Diagnóstico para logs do Streamlit Cloud
     print(f"[🤖 NOTIFICAÇÃO] Canais: {channels}")

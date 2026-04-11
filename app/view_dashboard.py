@@ -23,7 +23,7 @@ def render():
             unsafe_allow_html=True
         )
     with btn_col:
-        if st.button("🔄 Atualizar", key="btn_refresh", use_container_width=True, type="primary"):
+        if st.button("🔄 Atualizar", key="btn_refresh", width="stretch", type="primary"):
             st.cache_data.clear()
             st.rerun()
     
@@ -82,7 +82,7 @@ def render_summary_cards():
                     hist = get_rate_history(currency, hours=24)
                     if hist is not None and not hist.empty:
                         fig = line_chart(hist, f"{currency}/BRL", height=100)
-                        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+                        st.plotly_chart(fig, width="stretch", config={'displayModeBar': False})
 
 
 def render_candles():
@@ -92,7 +92,7 @@ def render_candles():
             if hist_data is not None and not hist_data.empty:
                 st.subheader(f"Histórico {currency}/BRL")
                 fig_candle = candlestick_chart(hist_data, f"{currency}/BRL")
-                st.plotly_chart(fig_candle, use_container_width=True)
+                st.plotly_chart(fig_candle, width="stretch")
 
 
 def render_intelligent_forecast():
