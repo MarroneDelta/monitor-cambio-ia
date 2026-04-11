@@ -88,8 +88,9 @@ def send_whatsapp(message: str) -> bool:
         log.warning(f"[🤖 WHATSAPP] Enviando para {WHATSAPP_PHONE}...")
         resp = http_requests.get(url, params=params, timeout=15)
         
-        if resp.status_code == 200:
-            log.warning(f"[✅ WHATSAPP] Mensagem enviada com sucesso!")
+        # 200 = Enviado instantaneamente | 210 = Colocado na fila (sucesso também)
+        if resp.status_code in [200, 210]:
+            log.warning(f"[✅ WHATSAPP] Mensagem aceita pelo CallMeBot! (Status {resp.status_code})")
             return True
         else:
             log.warning(f"[❌ WHATSAPP] Erro do CallMeBot: Status {resp.status_code} - {resp.text}")
