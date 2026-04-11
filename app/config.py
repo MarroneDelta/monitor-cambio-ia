@@ -1,51 +1,34 @@
-"""
-config.py — Configurações centrais da aplicação
-Todas as chaves sensíveis são lidas de variáveis de ambiente.
-"""
-
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Carrega variáveis do .env (na raiz do projeto)
+_env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(_env_path)
 
-# ── App ─────────────────────────────────────────────────────────────────────
+# ── Configurações Gerais do App ──────────────────────────────────────────────
 APP_CONFIG = {
     "title": "Monitor de Câmbio",
-    "icon": "💱",
-    "version": "1.0.0",
-    "refresh_interval": 300,   # segundos entre atualizações do robô
-    "robot_duration_h": 24,    # horas de validade do monitoramento
+    "icon": "💸",
+    "version": "1.2.0",
+    "refresh_interval": 3600*12,      # segundos entre verificações (5 min)
+    "robot_duration_h": 24,        # duração do robô em horas
 }
 
-# ── APIs externas ────────────────────────────────────────────────────────────
-EXCHANGE_API_KEY  = os.getenv("EXCHANGE_API_KEY", "")     # exchangerate-api.com
-NEWS_API_KEY      = os.getenv("NEWS_API_KEY", "")          # newsapi.org
-TELEGRAM_TOKEN    = os.getenv("TELEGRAM_TOKEN", "")
-TELEGRAM_CHAT_ID  = os.getenv("TELEGRAM_CHAT_ID", "")
+# ── Autenticação (simplificada) ──────────────────────────────────────────────
+AUTH_CONFIG = {
+    "user": "admin",
+    "password": "123",
+}
 
-# WhatsApp (CallMeBot)
-WHATSAPP_API_KEY = os.getenv("WHATSAPP_API_KEY", "")
-WHATSAPP_PHONE   = os.getenv("WHATSAPP_PHONE", "")
-
-# Email SMTP (alternativa ao Telegram)
-SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT     = int(os.getenv("SMTP_PORT", 587))
-SMTP_USER     = os.getenv("SMTP_USER", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-
-# ── Usuários hard-coded (substitua por banco em produção) ────────────────────
-# Senhas armazenadas como bcrypt hash — geradas via utils/security.py
+# ── Banco de Usuários (usado pelo view_cambio_auto) ─────────────────────────
 USERS = {
     "admin": {
         "name": "Administrador",
-        "password_hash": "$2b$12$KIX/O6nFucl1J3QsJRPJDeD3sVFvW.GXzE7VLEyVsHNmVBLy6Cbsq",
-        # hash de "admin123" — altere antes de usar em produção!
         "email": os.getenv("ADMIN_EMAIL", "admin@exemplo.com"),
     },
     "usuario": {
         "name": "Usuário Demo",
-        "password_hash": "$2b$12$Ej8rA7yCqIvkDhv3N5UkjeQi5dNgF4xWXq.3hy0JLxw4N.X9N1pYu",
-        # hash de "demo123"
         "email": os.getenv("DEMO_EMAIL", ""),
     },
 }
@@ -56,3 +39,30 @@ CURRENCIES = {
     "EUR": {"label": "Euro",            "flag": "🇪🇺", "symbol": "€"},
 }
 BASE_CURRENCY = "BRL"
+
+# ── Navegação ────────────────────────────────────────────────────────────────
+PAGES = {
+    "dashboard": {"icon": "📊", "label": "Dashboard"},
+    "cambio_auto": {"icon": "🤖", "label": "Câmbio Auto"},
+}
+
+# ── Chaves de API ────────────────────────────────────────────────────────────
+EXCHANGE_API_KEY = os.getenv("EXCHANGE_API_KEY", "")
+NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
+
+# ── Telegram ─────────────────────────────────────────────────────────────────
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+
+# ── WhatsApp (CallMeBot) ─────────────────────────────────────────────────────
+WHATSAPP_API_KEY = os.getenv("WHATSAPP_API_KEY", "")
+WHATSAPP_PHONE = os.getenv("WHATSAPP_PHONE", "")
+
+# ── E-mail SMTP ──────────────────────────────────────────────────────────────
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")

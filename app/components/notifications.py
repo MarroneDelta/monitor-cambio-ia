@@ -136,27 +136,36 @@ def dispatch_alert(
     max_target: float,
     trigger: str,
     user_email: Optional[str] = None,
+    channels: Optional[list] = None,
 ):
-    """Envia alerta por todos os canais disponíveis."""
+    """Envia alerta por todos os canais selecionados."""
+    if channels is None:
+        channels = ["In-app (painel)", "WhatsApp", "Telegram"]
+
     msg = build_alert_message(currency, current_rate, min_target, max_target, trigger)
 
     # Telegram
-    tg_ok = send_telegram(msg)
+    tg_ok = False
+    if "Telegram" in channels:
+        tg_ok = send_telegram(msg)
 
     # WhatsApp
-    wa_ok = send_whatsapp(msg)
+    wa_ok = False
+    if "WhatsApp" in channels:
+        wa_ok = send_whatsapp(msg)
 
     # E-mail
     email_ok = False
-    if user_email:
+    if "E-mail" in channels and user_email:
         subject = f"🚨 Alerta {currency}/BRL — R$ {current_rate:.4f}"
         email_ok = send_email(user_email, subject, msg)
 
-    # In-app sempre
-    push_in_app(currency, current_rate, trigger)
+    # In-app sempre (se selecionado ou padrão)
+    if "In-app (painel)" in channels:
+        push_in_app(currency, current_rate, trigger)
 
     log.info(
-        "Alerta %s %s disparado. WhatsApp=%s Telegram=%s Email=%s",
-        trigger, currency, wa_ok, tg_ok, email_ok,
+        "Alerta %s %s disparado. Canais=%s",
+        trigger, currency, channels
     )
-    return wa_ok or tg_ok or email_ok
+    return any([wa_ok, tg_ok, email_ok])

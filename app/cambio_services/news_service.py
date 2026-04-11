@@ -35,7 +35,7 @@ def _simple_sentiment(text: str) -> float:
     return round((pos - neg) / total, 2)
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=43200, show_spinner=False)
 def get_economic_news(query: str = "dólar euro câmbio economia") -> List[Dict]:
     articles = _fetch_newsapi(query) or _fetch_rss_fallback()
     for art in articles:

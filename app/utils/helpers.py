@@ -1,14 +1,10 @@
-"""
-utils/helpers.py — Injeção de CSS, PWA e formatação
-"""
-
-import os
 import streamlit as st
+import time
+from datetime import datetime
+from typing import Dict, List, Optional
 from pathlib import Path
 
-
 ASSETS_DIR = Path(__file__).parent.parent / "assets"
-
 
 def inject_css():
     css_path = ASSETS_DIR / "styles.css"
@@ -18,12 +14,12 @@ def inject_css():
         css = _default_css()
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
-
 def inject_pwa():
     """Injeta link para manifest e service worker no <head>."""
     st.markdown(
         """
-        <link rel="manifest" href="/app/static/manifest.json">
+        <link rel="manifest" href="/manifest.json">
+        <link rel="apple-touch-icon" href="/icon.png">
         <meta name="theme-color" content="#0d1117">
         <meta name="mobile-web-app-capable" content="yes">
         <meta name="apple-mobile-web-app-capable" content="yes">
@@ -32,73 +28,53 @@ def inject_pwa():
         <script>
           if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-              navigator.serviceWorker.register('/app/static/service_worker.js')
-                .catch(err => console.warn('SW:', err));
+              navigator.serviceWorker.register('/service-worker.js')
+                .then(reg => console.log('PWA Service Worker registrado', reg))
+                .catch(err => console.log('Falha no PWA Service Worker', err));
             });
           }
         </script>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
 
-
 def render_nav():
-    """Barra de navegação lateral personalizada."""
-    page = st.session_state.get("current_page", "dashboard")
-    user = st.session_state.get("user_name", "")
-
+    """Menu lateral customizado e responsivo."""
+    from config import PAGES
+    
     with st.sidebar:
         st.markdown(
             f"""
-            <div style='padding:1rem 0 0.5rem;text-align:center;'>
-                <div style='font-size:2rem;'>💱</div>
-                <div style='font-size:1.1rem;font-weight:700;color:#00d4ff;'>Monitor de Câmbio</div>
-                <div style='font-size:0.8rem;color:#8892a4;margin-top:0.2rem;'>Olá, {user} 👋</div>
+            <div style="text-align:center; padding:1.5rem 0;">
+                <div style="font-size:3rem; margin-bottom:0.5rem;">💸</div>
+                <h3 style="margin:0; color:#c9d1d9;">Monitor de Câmbio</h3>
+                <p style="font-size:0.8rem; color:#8892a4;">Olá, Administrador 👋</p>
             </div>
-            <hr style='border-color:#21262d;margin:0.5rem 0;'>
             """,
-            unsafe_allow_html=True,
+            unsafe_allow_html=True
         )
-
-        if st.button(
-            "📊  Dashboard",
-            use_container_width=True,
-            type="primary" if page == "dashboard" else "secondary",
-        ):
-            st.session_state["current_page"] = "dashboard"
+        
+        page = st.session_state.get("page", "dashboard")
+        
+        for p_id, p_info in PAGES.items():
+            if st.button(
+                f"{p_info['icon']}  {p_info['label']}",
+                key=f"nav_{p_id}",
+                use_container_width=True,
+                type="primary" if page == p_id else "secondary"
+            ):
+                st.session_state.page = p_id
+                st.rerun()
+        
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        if st.button("🚪 Sair", use_container_width=True, key="logout"):
+            st.toast("Encerrando sessão...")
+            time.sleep(1)
+            st.session_state.page = "login"
             st.rerun()
 
-        if st.button(
-            "🤖  Câmbio Auto",
-            use_container_width=True,
-            type="primary" if page == "cambio_auto" else "secondary",
-        ):
-            st.session_state["current_page"] = "cambio_auto"
-            st.rerun()
-
-        st.markdown("<hr style='border-color:#21262d;'>", unsafe_allow_html=True)
-
-        # Histórico de alertas inline
-        alerts = st.session_state.get("alert_history", [])
-        if alerts:
-            st.markdown("**🔔 Últimos alertas**")
-            for a in alerts[:3]:
-                icon = "📉" if a["trigger"] == "min" else "📈"
-                st.markdown(
-                    f"<small style='color:#8892a4;'>{icon} {a['currency']} "
-                    f"R${a['rate']:.4f} — {a['time']}</small>",
-                    unsafe_allow_html=True,
-                )
-
-        st.markdown("<hr style='border-color:#21262d;'>", unsafe_allow_html=True)
-        if st.button("🚪 Sair", use_container_width=True):
-            from components.auth import logout
-            logout()
-
-
-def fmt_brl(value: float) -> str:
-    return f"R$ {value:,.4f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
+def fmt_brl(val: float) -> str:
+    return f"R$ {val:.4f}"
 
 def trend_badge(trend: str) -> str:
     if "↑" in trend:
@@ -107,13 +83,22 @@ def trend_badge(trend: str) -> str:
         return f"<span style='color:#ff6b6b;font-weight:700;'>{trend}</span>"
     return f"<span style='color:#f9ca24;font-weight:700;'>{trend}</span>"
 
-
 def confidence_badge(conf: str) -> str:
     colors = {"alta": "#26de81", "média": "#f9ca24", "baixa": "#ff6b6b"}
     c = colors.get(conf, "#8892a4")
     return f"<span style='background:{c}22;color:{c};border:1px solid {c}44;padding:2px 8px;border-radius:12px;font-size:0.75rem;'>{conf}</span>"
 
+def sentiment_badge(score: float) -> str:
+    if score > 0.1:
+        label, color = "Positivo", "#26de81"
+    elif score < -0.1:
+        label, color = "Negativo", "#ff6b6b"
+    else:
+        label, color = "Neutro", "#f9ca24"
+    return f"<span style='background:{color}22;color:{color};border:1px solid {color}44;padding:2px 8px;border-radius:12px;font-size:0.75rem;'>{label}</span>"
 
 def _default_css() -> str:
-    """CSS embutido de fallback caso assets/styles.css não exista."""
-    return ""
+    return """
+    /* Fallback styles */
+    .stApp { background-color: #0d1117; color: #c9d1d9; }
+    """

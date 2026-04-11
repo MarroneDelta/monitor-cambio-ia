@@ -2,8 +2,14 @@
 Monitor de Câmbio — ponto de entrada principal
 """
 
+import os
+import sys
+
+# Garante que a raiz do app esteja no caminho de busca
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 import streamlit as st
-from config import APP_CONFIG
+from config import APP_CONFIG, PAGES
 from components.auth import check_auth, show_login
 from utils.helpers import inject_pwa, inject_css
 
@@ -12,7 +18,7 @@ st.set_page_config(
     page_title=APP_CONFIG["title"],
     page_icon=APP_CONFIG["icon"],
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
     menu_items={
         "Get Help": None,
         "Report a bug": None,
@@ -30,13 +36,16 @@ def main():
         return
 
     # Importa somente após autenticação
-    page = st.session_state.get("current_page", "dashboard")
+    from utils.helpers import render_nav
+    render_nav()
+    
+    page = st.session_state.get("page", "dashboard")
 
     if page == "dashboard":
-        from pages.dashboard import render
+        from view_dashboard import render
         render()
     elif page == "cambio_auto":
-        from pages.cambio_auto import render
+        from view_cambio_auto import render
         render()
 
 

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from utils.helpers import render_nav, fmt_brl
 from utils.security import validate_float
-from services.currency_service import get_current_rate
+from cambio_services.currency_service import get_current_rate
 from components.notifications import dispatch_alert
 from components.charts import gauge_chart
 from config import CURRENCIES, APP_CONFIG, USERS
@@ -30,14 +30,19 @@ def _robot_loop(config: dict):
     max_target = config["max_target"]
     expires    = config["expires"]
     user_email = config.get("user_email", "")
+    channels   = config.get("channels", ["In-app (painel)"])
     interval   = APP_CONFIG["refresh_interval"]
 
-    log.info("Robô iniciado para %s min=%.4f max=%.4f", currency, min_target, max_target)
+    print(f"\n[🤖 ROBÔ] Monitoramento iniciado para {currency} (Mín: {min_target} | Máx: {max_target})")
+    print(f"[🤖 ROBÔ] Verificando a cada {interval/60:.1f} minutos...\n")
 
     while datetime.utcnow() < expires:
         try:
             rate_data = get_current_rate.__wrapped__(currency)   # bypass cache
-            rate = rate_data["rate"]
+            rate = rate_data.get("rate", 0.0)
+            
+            check_time = datetime.now().strftime("%H:%M:%S")
+            print(f"[🤖 {check_time}] {currency}/BRL: R$ {rate:.4f} | Mín: {min_target:.4f} | Máx: {max_target:.4f}")
 
             with _robot_lock:
                 _robot_state["last_rate"]  = rate
@@ -45,18 +50,25 @@ def _robot_loop(config: dict):
                 _robot_state["running"]    = True
 
             if rate <= min_target:
+                print(f"[🚨 {check_time}] MÍNIMO ATINGIDO! {rate:.4f} <= {min_target:.4f} — Disparando alerta...")
                 log.info("MIN atingido %s: %.4f", currency, rate)
-                dispatch_alert(currency, rate, min_target, max_target, "min", user_email)
+                result = dispatch_alert(currency, rate, min_target, max_target, "min", user_email, channels)
+                print(f"[📨 {check_time}] Resultado do dispatch: {result}")
                 with _robot_lock:
                     _robot_state["last_trigger"] = f"MÍN atingido — R$ {rate:.4f}"
 
             elif rate >= max_target:
+                print(f"[🚨 {check_time}] MÁXIMO ATINGIDO! {rate:.4f} >= {max_target:.4f} — Disparando alerta...")
                 log.info("MAX atingido %s: %.4f", currency, rate)
-                dispatch_alert(currency, rate, min_target, max_target, "max", user_email)
+                result = dispatch_alert(currency, rate, min_target, max_target, "max", user_email, channels)
+                print(f"[📨 {check_time}] Resultado do dispatch: {result}")
                 with _robot_lock:
                     _robot_state["last_trigger"] = f"MÁX atingido — R$ {rate:.4f}"
+            else:
+                print(f"[✅ {check_time}] Cotação dentro do intervalo. Nenhum alerta.")
 
         except Exception as exc:
+            print(f"[❌ ROBÔ ERRO] {exc}")
             log.error("Robô erro: %s", exc)
 
         time.sleep(interval)
@@ -79,6 +91,7 @@ def _start_robot(config: dict):
             "config":       config,
             "last_rate":    None,
             "last_check":   None,
+            "started_at":   datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
         })
 
 
@@ -91,8 +104,6 @@ def _stop_robot():
 # ── Render ────────────────────────────────────────────────────────────────────
 
 def render():
-    render_nav()
-
     st.markdown(
         "<h2 style='color:#c9d1d9;margin-bottom:0;'>🤖 Câmbio Auto</h2>"
         "<p style='color:#8892a4;font-size:0.85rem;margin-top:0;'>Robô de monitoramento automático de moedas</p>",
@@ -107,6 +118,7 @@ def render():
         last_rate     = _robot_state.get("last_rate")
         last_check    = _robot_state.get("last_check", "—")
         last_trigger  = _robot_state.get("last_trigger")
+        started_at    = _robot_state.get("started_at", "—")
 
     # Badge de status
     if robot_running:
@@ -151,8 +163,9 @@ def render():
                     </div>
                 </div>
                 <div style="margin-top:0.8rem;font-size:0.8rem;color:#8892a4;">
-                    Última verificação: {last_check} &nbsp;|&nbsp;
-                    Cotação atual: {fmt_brl(last_rate) if last_rate else '—'}
+                    🕐 Iniciado em: <strong style="color:#00d4ff;">{started_at}</strong> &nbsp;|&nbsp;
+                    🔄 Última atualização: <strong style="color:#f9ca24;">{last_check}</strong> &nbsp;|&nbsp;
+                    💰 Cotação atual: <strong style="color:#c9d1d9;">{fmt_brl(last_rate) if last_rate else '—'}</strong>
                 </div>
                 {f'<div style="margin-top:0.4rem;font-size:0.85rem;color:#f9ca24;">⚡ {last_trigger}</div>' if last_trigger else ''}
             </div>
@@ -164,18 +177,18 @@ def render():
         if last_rate:
             st.plotly_chart(
                 gauge_chart(last_rate, cfg["min_target"], cfg["max_target"], f"{curr}/BRL"),
-                use_container_width=True,
+                width='stretch',
                 config={"displayModeBar": False},
             )
 
         col_stop, col_renew = st.columns(2)
         with col_stop:
-            if st.button("⏹️ Parar robô", use_container_width=True):
+            if st.button("⏹️ Parar robô", width='stretch'):
                 _stop_robot()
                 st.success("Robô encerrado.")
                 st.rerun()
         with col_renew:
-            if st.button("🔄 Renovar 24h", use_container_width=True):
+            if st.button("🔄 Renovar 24h", width='stretch'):
                 robot_config["expires"] = datetime.utcnow() + timedelta(
                     hours=APP_CONFIG["robot_duration_h"]
                 )
@@ -199,7 +212,7 @@ def render():
             )
 
             # Cotação atual para referência
-            rate_now = get_current_rate(currency)["rate"]
+            rate_now = get_current_rate(currency).get("rate", 0.0)
             st.markdown(
                 f"<small style='color:#8892a4;'>Cotação atual: {fmt_brl(rate_now)}</small>",
                 unsafe_allow_html=True,
@@ -225,13 +238,20 @@ def render():
                     format="%.4f",
                 )
 
-            notify_channels = st.multiselect(
-                "Canais de notificação",
-                options=["In-app (painel)", "Telegram", "E-mail"],
-                default=["In-app (painel)"],
-            )
+            st.write("🔔 Canais de notificação")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1: cb_painel = st.checkbox("💻 Painel", value=True)
+            with c2: cb_wa     = st.checkbox("🟢 WhatsApp", value=True)
+            with c3: cb_tg     = st.checkbox("🔵 Telegram", value=False)
+            with c4: cb_email  = st.checkbox("✉️ E-mail", value=False)
 
-            submitted = st.form_submit_button("🚀 Iniciar Monitoramento", use_container_width=True, type="primary")
+            notify_channels = []
+            if cb_painel: notify_channels.append("In-app (painel)")
+            if cb_wa:     notify_channels.append("WhatsApp")
+            if cb_tg:     notify_channels.append("Telegram")
+            if cb_email:  notify_channels.append("E-mail")
+
+            submitted = st.form_submit_button("🚀 Iniciar Monitoramento", width='stretch', type="primary")
 
         if submitted:
             if not validate_float(min_input, 0.01, 9999) or not validate_float(max_input, 0.01, 9999):

@@ -16,6 +16,15 @@ ACCENT2    = "#ff6b6b"
 TEXT_COLOR = "#c9d1d9"
 
 
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    """Converte hexadecimal para rgba compatível com Plotly."""
+    hex_color = hex_color.lstrip('#')
+    if len(hex_color) == 3:
+        hex_color = ''.join([c*2 for c in hex_color])
+    r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
 def _base_layout(title: str = "", height: int = 320) -> dict:
     return dict(
         title=dict(text=title, font=dict(color=TEXT_COLOR, size=14), x=0.02),
@@ -46,24 +55,25 @@ def _base_layout(title: str = "", height: int = 320) -> dict:
 def line_chart(
     df: pd.DataFrame,
     currency: str,
-    color: str = ACCENT,
+    color: str = "#00d4ff",
     height: int = 320,
 ) -> go.Figure:
     """Gráfico de linha para histórico de cotação."""
     fig = go.Figure()
 
     # Área preenchida
+    fill_color = _hex_to_rgba(color, 0.1) if color.startswith("#") else color.replace("rgb", "rgba").replace(")", ",0.1)")
+
     fig.add_trace(
         go.Scatter(
             x=df["timestamp"],
             y=df["rate"],
             name=currency,
-            mode="lines",
+            mode="lines+markers",
             line=dict(color=color, width=2),
+            marker=dict(size=6, symbol="circle", opacity=0.8),
             fill="tozeroy",
-            fillcolor=color.replace(")", ",0.08)").replace("rgb", "rgba")
-            if color.startswith("rgb")
-            else color + "15",
+            fillcolor=fill_color,
             hovertemplate="R$ %{y:.4f}<extra></extra>",
         )
     )
@@ -83,7 +93,7 @@ def candlestick_chart(df: pd.DataFrame, currency: str, height: int = 340) -> go.
             low=df["low"],
             close=df["close"],
             increasing_line_color="#26de81",
-            decreasing_line_color=ACCENT2,
+            decreasing_line_color="#ff6b6b",
         )
     )
     layout = _base_layout(f"Variação Diária {currency}/BRL", height)
@@ -107,9 +117,9 @@ def gauge_chart(value: float, min_val: float, max_val: float, label: str) -> go.
                 "bgcolor": CARD_BG,
                 "bordercolor": GRID_COLOR,
                 "steps": [
-                    {"range": [min_val * 0.98, min_val], "color": "#26de8130"},
-                    {"range": [min_val, max_val],         "color": "#f9ca2430"},
-                    {"range": [max_val, max_val * 1.02],  "color": ACCENT2 + "30"},
+                    {"range": [min_val * 0.98, min_val], "color": "rgba(38, 222, 129, 0.15)"},
+                    {"range": [min_val, max_val],         "color": "rgba(249, 202, 36, 0.15)"},
+                    {"range": [max_val, max_val * 1.02],  "color": "rgba(255, 107, 107, 0.15)"},
                 ],
                 "threshold": {
                     "line": {"color": ACCENT2, "width": 2},
@@ -128,15 +138,17 @@ def gauge_chart(value: float, min_val: float, max_val: float, label: str) -> go.
     return fig
 
 
-def mini_sparkline(values: list, color: str = ACCENT) -> go.Figure:
+def mini_sparkline(values: list, color: str = "#00d4ff") -> go.Figure:
     """Sparkline compacto para cards."""
+    fill_color = _hex_to_rgba(color, 0.2) if color.startswith("#") else color.replace("rgb", "rgba").replace(")", ",0.2)")
+    
     fig = go.Figure(
         go.Scatter(
             y=values,
             mode="lines",
             line=dict(color=color, width=1.5),
             fill="tozeroy",
-            fillcolor=color + "20",
+            fillcolor=fill_color,
         )
     )
     fig.update_layout(
