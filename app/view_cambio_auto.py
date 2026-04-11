@@ -28,7 +28,10 @@ _robot_state: dict = {
     "last_rate": None,
     "last_check": None,
     "last_trigger": None,
-    "alert_history": []  # Nova fonte global de histórico
+    "alert_history": [],
+    "config": {},
+    "started_at": None,
+    "expired": False
 }
 
 
