@@ -70,11 +70,11 @@ def send_telegram(message: str) -> bool:
 def send_whatsapp(message: str) -> bool:
     # Verificação de chaves com log explícito para o Cloud
     if not WHATSAPP_API_KEY or not WHATSAPP_PHONE:
-        print(f"[⚠️ WHATSAPP] Erro: Chaves ausentes. Verifique os Secrets no Streamlit (WHATSAPP_API_KEY e WHATSAPP_PHONE).")
+        log.warning(f"[⚠️ WHATSAPP] Erro: Chaves ausentes nos Secrets do Streamlit.")
         return False
         
     if http_requests is None:
-        print(f"[⚠️ WHATSAPP] Erro: Biblioteca 'requests' não carregou corretamente.")
+        log.warning(f"[⚠️ WHATSAPP] Erro: Biblioteca 'requests' não carregou.")
         return False
 
     try:
@@ -85,18 +85,18 @@ def send_whatsapp(message: str) -> bool:
             "apikey": WHATSAPP_API_KEY
         }
         
-        print(f"[🤖 WHATSAPP] Enviando para {WHATSAPP_PHONE}...")
+        log.warning(f"[🤖 WHATSAPP] Enviando para {WHATSAPP_PHONE}...")
         resp = http_requests.get(url, params=params, timeout=15)
         
         if resp.status_code == 200:
-            print(f"[✅ WHATSAPP] Mensagem enviada com sucesso!")
+            log.warning(f"[✅ WHATSAPP] Mensagem enviada com sucesso!")
             return True
         else:
-            print(f"[❌ WHATSAPP] Erro do CallMeBot: Status {resp.status_code} - {resp.text}")
+            log.warning(f"[❌ WHATSAPP] Erro do CallMeBot: Status {resp.status_code} - {resp.text}")
             return False
             
     except Exception as exc:
-        print(f"[❌ WHATSAPP] Falha na conexão: {exc}")
+        log.warning(f"[❌ WHATSAPP] Falha na conexão: {exc}")
         return False
 
 

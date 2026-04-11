@@ -8,6 +8,8 @@ import time
 import logging
 from datetime import datetime, timedelta
 
+log = logging.getLogger(__name__)
+
 from utils.helpers import render_nav, fmt_brl
 from utils.security import validate_float
 from cambio_services.currency_service import get_current_rate
@@ -49,7 +51,7 @@ def _robot_loop(config: dict):
             rate = rate_data.get("rate", 0.0)
             
             check_time = datetime.now().strftime("%H:%M:%S")
-            print(f"[🤖 {check_time}] {currency}/BRL: R$ {rate:.4f} | Mín: {min_target:.4f} | Máx: {max_target:.4f}")
+            log.warning(f"[🤖 {check_time}] {currency}/BRL: R$ {rate:.4f} | Mín: {min_target:.4f} | Máx: {max_target:.4f}")
 
             with _robot_lock:
                 _robot_state["last_rate"]  = rate
@@ -57,10 +59,9 @@ def _robot_loop(config: dict):
                 _robot_state["running"]    = True
 
             if rate <= min_target:
-                print(f"[🚨 {check_time}] MÍNIMO ATINGIDO! {rate:.4f} <= {min_target:.4f} — Disparando alerta...")
-                log.info("MIN atingido %s: %.4f", currency, rate)
+                log.warning(f"[🚨 {check_time}] MÍNIMO ATINGIDO! {rate:.4f} <= {min_target:.4f} — Disparando alerta...")
                 result = dispatch_alert(currency, rate, min_target, max_target, "min", user_email, channels)
-                print(f"[📨 {check_time}] Resultado do dispatch: {result}")
+                log.warning(f"[📨 {check_time}] Resultado do dispatch: {result}")
                 with _robot_lock:
                     _robot_state["last_trigger"] = f"MÍN atingido — R$ {rate:.4f}"
                     # Registrar no histórico global
@@ -73,10 +74,9 @@ def _robot_loop(config: dict):
                     _robot_state["alert_history"] = _robot_state["alert_history"][:50]
 
             elif rate >= max_target:
-                print(f"[🚨 {check_time}] MÁXIMO ATINGIDO! {rate:.4f} >= {max_target:.4f} — Disparando alerta...")
-                log.info("MAX atingido %s: %.4f", currency, rate)
+                log.warning(f"[🚨 {check_time}] MÁXIMO ATINGIDO! {rate:.4f} >= {max_target:.4f} — Disparando alerta...")
                 result = dispatch_alert(currency, rate, min_target, max_target, "max", user_email, channels)
-                print(f"[📨 {check_time}] Resultado do dispatch: {result}")
+                log.warning(f"[📨 {check_time}] Resultado do dispatch: {result}")
                 with _robot_lock:
                     _robot_state["last_trigger"] = f"MÁX atingido — R$ {rate:.4f}"
                     # Registrar no histórico global
