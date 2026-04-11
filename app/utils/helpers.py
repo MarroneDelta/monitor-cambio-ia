@@ -69,8 +69,10 @@ def render_nav():
         st.markdown("<br><br>", unsafe_allow_html=True)
         if st.button("🚪 Sair", use_container_width=True, key="logout"):
             st.toast("Encerrando sessão...")
-            time.sleep(1)
-            st.session_state.page = "login"
+            time.sleep(0.5)
+            st.session_state["authenticated"] = False
+            st.session_state["username"] = None
+            st.session_state["page"] = "login"
             st.rerun()
 
 def fmt_brl(val: float) -> str:

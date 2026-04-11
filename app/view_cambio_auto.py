@@ -52,6 +52,9 @@ def save_robot_state_to_db(config: dict, running: bool):
             "channels": config.get("channels"),
             "expires": config.get("expires").isoformat() if isinstance(config.get("expires"), datetime) else None,
             "last_run_id": config.get("run_id"),
+            "schedule_mode": config.get("schedule_mode", "hybrid"),
+            "schedule_slots": config.get("schedule_slots", []),
+            "maintenance_interval_h": config.get("maintenance_interval_h", 12),
             "updated_at": datetime.now().isoformat()
         }
         supabase.table("cambio_monitor_state").upsert(data).execute()
@@ -72,11 +75,52 @@ def load_robot_state_from_db():
                     "max_target": row["max_rate"],
                     "expires": datetime.fromisoformat(row["expires"]),
                     "channels": row["channels"],
-                    "run_id": row.get("last_run_id")
+                    "run_id": row.get("last_run_id"),
+                    "schedule_mode": row.get("schedule_mode", "hybrid"),
+                    "schedule_slots": row.get("schedule_slots", []),
+                    "maintenance_interval_h": row.get("maintenance_interval_h", 12)
                 }
     except Exception as e:
         log.error(f"Erro ao carregar estado do Supabase: {e}")
     return None
+
+def get_seconds_until_next_check(config: dict) -> int:
+    """Calcula quanto tempo o robô deve esperar para a próxima verificação (Híbrido Customizado)."""
+    # 1. Horários Estratégicos Escolhidos pelo Usuário
+    target_slots = config.get("schedule_slots", [9.0, 10.5, 12.0, 13.0, 18.0])
+    
+    # 2. Ciclo de Manutenção (12h ou 24h)
+    m_interval = config.get("maintenance_interval_h", 12)
+    started_at_str = _robot_state.get("started_at")
+    
+    if started_at_str:
+        try:
+            start_dt = datetime.strptime(started_at_str, "%d/%m/%Y %H:%M:%S")
+            start_float = start_dt.hour + start_dt.minute/60.0
+            target_slots.append(start_float)
+            if m_interval == 12:
+                target_slots.append((start_float + 12) % 24)
+        except:
+            pass
+
+    # Horário atual em Brasília (UTC-3)
+    now_utc = datetime.utcnow()
+    now_br  = now_utc - timedelta(hours=3)
+    curr_float = now_br.hour + now_br.minute/60.0 + now_br.second/3600.0
+    
+    next_slot = None
+    for s in sorted(list(set(target_slots))): # set para remover duplicatas
+        if s > curr_float:
+            next_slot = s
+            break
+            
+    if next_slot is not None:
+        diff_hours = next_slot - curr_float
+    else:
+        # Primeiro slot do dia seguinte
+        diff_hours = (24 - curr_float) + min(target_slots)
+        
+    return int(max(diff_hours * 3600, 60)) # No mínimo 1 minuto de espera
 
 def _robot_loop(config: dict):
     """Thread do robô. Executa até expirar ou ser cancelada."""
@@ -87,9 +131,16 @@ def _robot_loop(config: dict):
     expires    = config["expires"]
     user_email = config.get("user_email", "")
     channels   = config.get("channels", ["In-app (painel)"])
-    interval = APP_CONFIG.get("refresh_interval", 600)
+    # Configurações dinâmicas do loop
+    interval = get_seconds_until_next_check(config)
+    next_check_time = (datetime.now() + timedelta(seconds=interval)).strftime("%H:%M:%S")
+    
+    print(f"\n[🤖 ROBÔ] Thread iniciada | ID: {run_id} | Modo: {config.get('schedule_mode','interval')}")
+    print(f"[🤖 ROBÔ] Próxima verificação estimada em: {next_check_time}")
 
-    print(f"\n[🤖 ROBÔ] Thread iniciada | ID: {run_id} | Moeda: {currency}")
+    # Garantir que expires seja naive para comparação com datetime.utcnow()
+    if expires and expires.tzinfo is not None:
+        expires = expires.replace(tzinfo=None)
 
     while datetime.utcnow() < expires:
         # CHECK DE SEGURANÇA: Se o ID mudou ou mandaram parar, encerra a thread
@@ -146,6 +197,7 @@ def _robot_loop(config: dict):
             log.error("Robô erro: %s", exc)
 
         # Smart Sleep: Acorda a cada 60s para ver se deve parar
+        interval = get_seconds_until_next_check(config)
         slept = 0
         while slept < interval:
             time.sleep(60)
@@ -348,6 +400,36 @@ def render():
             with c2: cb_wa     = st.checkbox("🟢 WhatsApp", value=True)
             with c3: cb_tg     = st.checkbox("🔵 Telegram", value=False)
             with c4: cb_email  = st.checkbox("✉️ E-mail", value=False)
+            
+            st.markdown("---")
+            st.write("📅 **Configuração de Agenda Customizada**")
+            
+            cs1, cs2 = st.columns(2)
+            with cs1:
+                ui_m_interval = st.selectbox(
+                    "Ciclo de Manutenção",
+                    options=[12, 24],
+                    format_func=lambda x: f"A cada {x} horas",
+                    index=0,
+                    help="Garante que o robô verifique a cotação pelo menos uma vez a cada ciclo, independente dos horários estratégicos."
+                )
+            
+            with cs2:
+                preset_options = {
+                    "09:00 (Abertura)": 9.0,
+                    "10:30 (EUA)": 10.5,
+                    "12:00 (PTAX 1)": 12.0,
+                    "13:00 (PTAX Final)": 13.0,
+                    "18:00 (Fechamento)": 18.0,
+                    "21:00 (Ajuste)": 21.0
+                }
+                ui_slots = st.multiselect(
+                    "Horários Estratégicos",
+                    options=list(preset_options.keys()),
+                    default=["09:00 (Abertura)", "12:00 (PTAX 1)", "18:00 (Fechamento)"],
+                    help="Momentos de maior liquidez e volatilidade no mercado (Brasília)."
+                )
+                selected_slots = [preset_options[s] for s in ui_slots]
 
             notify_channels = []
             if cb_painel: notify_channels.append("In-app (painel)")
@@ -372,6 +454,9 @@ def render():
                     "expires":    datetime.utcnow() + timedelta(hours=APP_CONFIG["robot_duration_h"]),
                     "user_email": user_email,
                     "channels":   notify_channels,
+                    "schedule_mode": "hybrid",
+                    "schedule_slots": selected_slots,
+                    "maintenance_interval_h": ui_m_interval
                 }
                 _start_robot(config)
                 st.success(
