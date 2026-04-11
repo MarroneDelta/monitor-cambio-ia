@@ -11,7 +11,7 @@ APP_CONFIG = {
     "title": "Monitor de Câmbio",
     "icon": "💸",
     "version": "1.2.0",
-    "refresh_interval": 3600*12,      # segundos entre verificações (5 min)
+    "refresh_interval": 43200,      # segundos entre verificações (12 horas)
     "robot_duration_h": 24,        # duração do robô em horas
 }
 

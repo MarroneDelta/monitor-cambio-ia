@@ -16,6 +16,7 @@ from cambio_services.currency_service import get_current_rate
 from components.notifications import dispatch_alert
 from components.charts import gauge_chart
 from config import CURRENCIES, APP_CONFIG, USERS
+from components.auth import get_supabase
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +32,45 @@ _robot_state: dict = {
 }
 
 
+# ── Persistência no Supabase ──────────────────────────────────────────────────
+
+def save_robot_state_to_db(config: dict, running: bool):
+    """Salva a configuração do robô no Supabase para persistência."""
+    try:
+        supabase = get_supabase()
+        data = {
+            "id": "main_robot",
+            "is_running": running,
+            "currency": config.get("currency"),
+            "min_rate": config.get("min_target"),
+            "max_rate": config.get("max_target"),
+            "channels": config.get("channels"),
+            "expires": config.get("expires").isoformat() if isinstance(config.get("expires"), datetime) else None,
+            "updated_at": datetime.now().isoformat()
+        }
+        supabase.table("cambio_monitor_state").upsert(data).execute()
+    except Exception as e:
+        log.error(f"Erro ao salvar estado no Supabase: {e}")
+
+def load_robot_state_from_db():
+    """Carrega a configuração do robô do Supabase."""
+    try:
+        supabase = get_supabase()
+        res = supabase.table("cambio_monitor_state").select("*").eq("id", "main_robot").execute()
+        if res.data:
+            row = res.data[0]
+            if row["is_running"]:
+                return {
+                    "currency": row["currency"],
+                    "min_target": row["min_rate"],
+                    "max_target": row["max_rate"],
+                    "expires": datetime.fromisoformat(row["expires"]),
+                    "channels": row["channels"]
+                }
+    except Exception as e:
+        log.error(f"Erro ao carregar estado do Supabase: {e}")
+    return None
+
 def _robot_loop(config: dict):
     """Thread do robô. Executa até expirar ou ser cancelada."""
     currency  = config["currency"]
@@ -39,8 +79,7 @@ def _robot_loop(config: dict):
     expires    = config["expires"]
     user_email = config.get("user_email", "")
     channels   = config.get("channels", ["In-app (painel)"])
-    # O robô agora verifica a cada 10 minutos para garantir agilidade nos alertas
-    interval = 600
+    interval = APP_CONFIG.get("refresh_interval", 600)
 
     print(f"\n[🤖 ROBÔ] Monitoramento iniciado para {currency} (Mín: {min_target} | Máx: {max_target})")
     print(f"[🤖 ROBÔ] Verificando a cada {interval/60:.1f} minutos...\n")
@@ -102,7 +141,7 @@ def _robot_loop(config: dict):
     log.info("Robô encerrado para %s.", currency)
 
 
-def _start_robot(config: dict):
+def _start_robot(config: dict, skip_db: bool = False):
     t = threading.Thread(target=_robot_loop, args=(config,), daemon=True)
     t.start()
     with _robot_lock:
@@ -116,17 +155,34 @@ def _start_robot(config: dict):
             "last_check":   None,
             "started_at":   datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
         })
+    if not skip_db:
+        save_robot_state_to_db(config, True)
 
 
 def _stop_robot():
     with _robot_lock:
         _robot_state["expired"] = True
         _robot_state["running"] = False
+    save_robot_state_to_db({}, False)
 
 
 # ── Render ────────────────────────────────────────────────────────────────────
 
+def auto_recover_robot():
+    """Tenta recuperar o robô do banco se ele não estiver rodando na memória."""
+    with _robot_lock:
+        if _robot_state.get("running"):
+            return
+    
+    config = load_robot_state_from_db()
+    if config:
+        log.warning("🔄 Robô recuperado do banco de dados! Reiniciando monitoramento...")
+        _start_robot(config, skip_db=True)
+
 def render():
+    # Tenta recuperar robô ao carregar a página
+    auto_recover_robot()
+    
     st.markdown(
         "<h2 style='color:#c9d1d9;margin-bottom:0;'>🤖 Câmbio Auto</h2>"
         "<p style='color:#8892a4;font-size:0.85rem;margin-top:0;'>Robô de monitoramento automático de moedas</p>",

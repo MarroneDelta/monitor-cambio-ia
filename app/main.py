@@ -31,6 +31,9 @@ def main():
 
     # Importa somente após autenticação
     from utils.helpers import render_nav
+    from view_cambio_auto import auto_recover_robot
+    
+    auto_recover_robot()
     render_nav()
     
     page = st.session_state.get("page", "dashboard")
