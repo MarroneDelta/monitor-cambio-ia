@@ -52,18 +52,27 @@ def build_alert_message(
 
 def send_telegram(message: str) -> bool:
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        log.warning("Telegram não configurado.")
+        log.warning("[⚠️ TELEGRAM] Erro: Token ou Chat ID ausentes nos Secrets.")
         return False
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        log.warning(f"[🤖 TELEGRAM] Enviando para Chat ID {TELEGRAM_CHAT_ID}...")
+        
         resp = http_requests.post(
             url,
             json={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"},
             timeout=10,
         )
-        return resp.status_code == 200
+        
+        if resp.status_code == 200:
+            log.warning("[✅ TELEGRAM] Mensagem enviada com sucesso!")
+            return True
+        else:
+            log.warning(f"[❌ TELEGRAM] Erro no Bot: Status {resp.status_code} - {resp.text}")
+            return False
+            
     except Exception as exc:
-        log.error("Erro Telegram: %s", exc)
+        log.warning(f"[❌ TELEGRAM] Falha na conexão com Telegram: {exc}")
         return False
 
 
