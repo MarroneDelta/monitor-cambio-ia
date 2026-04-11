@@ -164,8 +164,10 @@ def dispatch_alert(
     if "In-app (painel)" in channels:
         push_in_app(currency, current_rate, trigger)
 
-    log.info(
-        "Alerta %s %s disparado. Canais=%s",
-        trigger, currency, channels
-    )
+    # Diagnóstico para logs do Streamlit Cloud
+    print(f"[🤖 NOTIFICAÇÃO] Canais: {channels}")
+    print(f"   ∟ WhatsApp: {'✅ OK' if wa_ok else '❌ FALHOU ou não selecionado'}")
+    print(f"   ∟ Telegram: {'✅ OK' if tg_ok else '❌ FALHOU ou não selecionado'}")
+    print(f"   ∟ E-mail:   {'✅ OK' if email_ok else '❌ FALHOU ou não selecionado'}")
+
     return any([wa_ok, tg_ok, email_ok])
