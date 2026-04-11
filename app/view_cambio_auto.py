@@ -20,7 +20,13 @@ log = logging.getLogger(__name__)
 # ── Robô em background ────────────────────────────────────────────────────────
 
 _robot_lock  = threading.Lock()
-_robot_state: dict = {}    # estado compartilhado entre threads
+_robot_state: dict = {
+    "running": False,
+    "last_rate": None,
+    "last_check": None,
+    "last_trigger": None,
+    "alert_history": []  # Nova fonte global de histórico
+}
 
 
 def _robot_loop(config: dict):
@@ -57,6 +63,14 @@ def _robot_loop(config: dict):
                 print(f"[📨 {check_time}] Resultado do dispatch: {result}")
                 with _robot_lock:
                     _robot_state["last_trigger"] = f"MÍN atingido — R$ {rate:.4f}"
+                    # Registrar no histórico global
+                    _robot_state["alert_history"].insert(0, {
+                        "time": datetime.now().strftime("%d/%m %H:%M"),
+                        "currency": currency,
+                        "rate": rate,
+                        "trigger": "MÍN atingido"
+                    })
+                    _robot_state["alert_history"] = _robot_state["alert_history"][:50]
 
             elif rate >= max_target:
                 print(f"[🚨 {check_time}] MÁXIMO ATINGIDO! {rate:.4f} >= {max_target:.4f} — Disparando alerta...")
@@ -65,6 +79,14 @@ def _robot_loop(config: dict):
                 print(f"[📨 {check_time}] Resultado do dispatch: {result}")
                 with _robot_lock:
                     _robot_state["last_trigger"] = f"MÁX atingido — R$ {rate:.4f}"
+                    # Registrar no histórico global
+                    _robot_state["alert_history"].insert(0, {
+                        "time": datetime.now().strftime("%d/%m %H:%M"),
+                        "currency": currency,
+                        "rate": rate,
+                        "trigger": "MÁX atingido"
+                    })
+                    _robot_state["alert_history"] = _robot_state["alert_history"][:50]
             else:
                 print(f"[✅ {check_time}] Cotação dentro do intervalo. Nenhum alerta.")
 
@@ -281,7 +303,9 @@ def render():
     st.markdown("---")
     st.markdown("#### 🔔 Histórico de Alertas")
 
-    alerts = st.session_state.get("alert_history", [])
+    with _robot_lock:
+        alerts = _robot_state.get("alert_history", [])
+        
     if not alerts:
         st.markdown(
             "<p style='color:#8892a4;font-size:0.85rem;'>Nenhum alerta disparado ainda.</p>",
@@ -289,9 +313,10 @@ def render():
         )
     else:
         for a in alerts[:20]:
-            icon  = "📉" if a["trigger"] == "min" else "📈"
-            color = "#26de81" if a["trigger"] == "min" else "#ff6b6b"
-            label = "MÍN atingido" if a["trigger"] == "min" else "MÁX atingido"
+            is_min = "min" in a["trigger"].lower()
+            icon  = "📉" if is_min else "📈"
+            color = "#26de81" if is_min else "#ff6b6b"
+            label = a["trigger"]
             st.markdown(
                 f"""
                 <div class="alert-item">

@@ -68,22 +68,35 @@ def send_telegram(message: str) -> bool:
 
 
 def send_whatsapp(message: str) -> bool:
+    # Verificação de chaves com log explícito para o Cloud
     if not WHATSAPP_API_KEY or not WHATSAPP_PHONE:
-        log.warning("WhatsApp (CallMeBot) não configurado.")
+        print(f"[⚠️ WHATSAPP] Erro: Chaves ausentes. Verifique os Secrets no Streamlit (WHATSAPP_API_KEY e WHATSAPP_PHONE).")
         return False
+        
+    if http_requests is None:
+        print(f"[⚠️ WHATSAPP] Erro: Biblioteca 'requests' não carregou corretamente.")
+        return False
+
     try:
-        # CallMeBot API: https://api.callmebot.com/whatsapp.php?phone=[phone]&text=[text]&apikey=[apikey]
         url = "https://api.callmebot.com/whatsapp.php"
         params = {
             "phone": WHATSAPP_PHONE,
             "text": message,
             "apikey": WHATSAPP_API_KEY
         }
-        # Nota: CallMeBot usa GET para envio simples
+        
+        print(f"[🤖 WHATSAPP] Enviando para {WHATSAPP_PHONE}...")
         resp = http_requests.get(url, params=params, timeout=15)
-        return resp.status_code == 200
+        
+        if resp.status_code == 200:
+            print(f"[✅ WHATSAPP] Mensagem enviada com sucesso!")
+            return True
+        else:
+            print(f"[❌ WHATSAPP] Erro do CallMeBot: Status {resp.status_code} - {resp.text}")
+            return False
+            
     except Exception as exc:
-        log.error("Erro WhatsApp: %s", exc)
+        print(f"[❌ WHATSAPP] Falha na conexão: {exc}")
         return False
 
 
