@@ -6,6 +6,7 @@ import streamlit as st
 import threading
 import time
 import logging
+import uuid
 from datetime import datetime, timedelta
 
 log = logging.getLogger(__name__)
@@ -31,7 +32,8 @@ _robot_state: dict = {
     "alert_history": [],
     "config": {},
     "started_at": None,
-    "expired": False
+    "expired": False,
+    "run_id": None # DNA do robô ativo
 }
 
 
@@ -49,6 +51,7 @@ def save_robot_state_to_db(config: dict, running: bool):
             "max_rate": config.get("max_target"),
             "channels": config.get("channels"),
             "expires": config.get("expires").isoformat() if isinstance(config.get("expires"), datetime) else None,
+            "last_run_id": config.get("run_id"),
             "updated_at": datetime.now().isoformat()
         }
         supabase.table("cambio_monitor_state").upsert(data).execute()
@@ -68,7 +71,8 @@ def load_robot_state_from_db():
                     "min_target": row["min_rate"],
                     "max_target": row["max_rate"],
                     "expires": datetime.fromisoformat(row["expires"]),
-                    "channels": row["channels"]
+                    "channels": row["channels"],
+                    "run_id": row.get("last_run_id")
                 }
     except Exception as e:
         log.error(f"Erro ao carregar estado do Supabase: {e}")
@@ -76,6 +80,7 @@ def load_robot_state_from_db():
 
 def _robot_loop(config: dict):
     """Thread do robô. Executa até expirar ou ser cancelada."""
+    run_id    = config.get("run_id")
     currency  = config["currency"]
     min_target = config["min_target"]
     max_target = config["max_target"]
@@ -84,21 +89,26 @@ def _robot_loop(config: dict):
     channels   = config.get("channels", ["In-app (painel)"])
     interval = APP_CONFIG.get("refresh_interval", 600)
 
-    print(f"\n[🤖 ROBÔ] Monitoramento iniciado para {currency} (Mín: {min_target} | Máx: {max_target})")
-    print(f"[🤖 ROBÔ] Verificando a cada {interval/60:.1f} minutos...\n")
+    print(f"\n[🤖 ROBÔ] Thread iniciada | ID: {run_id} | Moeda: {currency}")
 
     while datetime.utcnow() < expires:
+        # CHECK DE SEGURANÇA: Se o ID mudou ou mandaram parar, encerra a thread
+        with _robot_lock:
+            if not _robot_state.get("running") or _robot_state.get("run_id") != run_id:
+                log.warning(f"[🤖 ROBÔ] DNA inválido ou parada solicitada. Encerrando thread ({run_id})...")
+                break
+
         try:
             rate_data = get_current_rate.__wrapped__(currency)   # bypass cache
             rate = rate_data.get("rate", 0.0)
             
             check_time = datetime.now().strftime("%H:%M:%S")
-            log.warning(f"[🤖 {check_time}] {currency}/BRL: R$ {rate:.4f} | Mín: {min_target:.4f} | Máx: {max_target:.4f}")
+            log.warning(f"[🤖 {check_time}] {currency}/BRL: R$ {rate:.4f} | ID: {run_id}")
 
             with _robot_lock:
                 _robot_state["last_rate"]  = rate
                 _robot_state["last_check"] = datetime.now().strftime("%d/%m %H:%M:%S")
-                _robot_state["running"]    = True
+                # Não sobrescrevemos o running aqui para não atrapalhar o ID
 
             if rate <= min_target:
                 log.warning(f"[🚨 {check_time}] MÍNIMO ATINGIDO! {rate:.4f} <= {min_target:.4f} — Disparando alerta...")
@@ -133,10 +143,16 @@ def _robot_loop(config: dict):
                 print(f"[✅ {check_time}] Cotação dentro do intervalo. Nenhum alerta.")
 
         except Exception as exc:
-            print(f"[❌ ROBÔ ERRO] {exc}")
             log.error("Robô erro: %s", exc)
 
-        time.sleep(interval)
+        # Smart Sleep: Acorda a cada 60s para ver se deve parar
+        slept = 0
+        while slept < interval:
+            time.sleep(60)
+            slept += 60
+            with _robot_lock:
+                if not _robot_state.get("running") or _robot_state.get("run_id") != run_id:
+                    return # Encerra o sono e a thread imediatamente
 
     with _robot_lock:
         _robot_state["running"] = False
@@ -145,10 +161,14 @@ def _robot_loop(config: dict):
 
 
 def _start_robot(config: dict, skip_db: bool = False):
+    new_run_id = str(uuid.uuid4())
+    config["run_id"] = new_run_id
+    
     t = threading.Thread(target=_robot_loop, args=(config,), daemon=True)
     t.start()
     with _robot_lock:
         _robot_state.update({
+            "run_id":       new_run_id,
             "running":      True,
             "expired":      False,
             "last_trigger": None,
