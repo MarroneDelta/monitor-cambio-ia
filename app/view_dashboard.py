@@ -96,7 +96,7 @@ def render_candles():
 
 
 def render_intelligent_forecast():
-    st.markdown("### 🤖 Análise de Câmbio via IA (GPT-4.1-mini)")
+    st.markdown("### 🤖 Análise de Câmbio via IA")
     
     from utils.math_utils import get_ai_analysis
     
@@ -144,7 +144,9 @@ def render_intelligent_forecast():
     
     # Análise textual (compacta)
     confidence = analysis.get("confidence", "média")
-    source = analysis.get("source", "desconhecido")
+    source = analysis.get("source", "IA")
+    if source == "gpt-4.1-mini":
+        source = "Inteligência Artificial"
     
     st.markdown(
         f"""<div style="background:#161b22;border-radius:10px;padding:1rem;border:1px solid #30363d;margin-top:0.5rem;">
