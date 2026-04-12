@@ -14,7 +14,7 @@ from config import EXCHANGE_API_KEY, BASE_CURRENCY, CURRENCIES
 
 log = logging.getLogger(__name__)
 
-_FALLBACK_RATES = {"USD": 5.05, "EUR": 5.45}
+_FALLBACK_RATES = {"USD": 5.01, "EUR": 5.42}
 
 # ── Busca cotação atual ───────────────────────────────────────────────────────
 
@@ -54,14 +54,14 @@ def _fetch_from_awesomeapi(currency: str) -> Optional[float]:
 @st.cache_data(ttl=43200, show_spinner=False)
 def get_current_rate(currency: str) -> Dict:
     """Retorna cotação atual com metadados."""
-    rate = _fetch_from_api(currency) or _fetch_from_awesomeapi(currency)
+    rate = _fetch_from_awesomeapi(currency) or _fetch_from_api(currency)
 
     if rate:
         source = "live"
     else:
         # Fallback com pequena variação aleatória para simular mercado
         base = _FALLBACK_RATES.get(currency, 5.0)
-        rate = round(base + random.uniform(-0.05, 0.05), 4)
+        rate = round(base + random.uniform(-0.01, 0.01), 4)
         source = "demo"
         log.warning("Usando cotação demo para %s.", currency)
 
@@ -112,12 +112,12 @@ def _fetch_history_awesomeapi(currency: str, hours: int) -> Optional[pd.DataFram
 
 
 def _simulate_history(currency: str, hours: int) -> pd.DataFrame:
-    base = _FALLBACK_RATES.get(currency, 5.0)
+    base = _FALLBACK_RATES.get(currency, 5.01)
     now = datetime.now()
     rows = []
     price = base
     for i in range(hours, -1, -1):
-        price += random.uniform(-0.02, 0.02)
+        price += random.uniform(-0.01, 0.01)
         price = max(price, base * 0.9)
         rows.append(
             {"timestamp": now - timedelta(hours=i), "rate": round(price, 4)}
@@ -129,13 +129,13 @@ def _simulate_history(currency: str, hours: int) -> pd.DataFrame:
 
 @st.cache_data(ttl=43200, show_spinner=False)
 def get_ohlc(currency: str, days: int = 14) -> pd.DataFrame:
-    base = _FALLBACK_RATES.get(currency, 5.0)
+    base = _FALLBACK_RATES.get(currency, 5.01)
     rows, price = [], base
     now = datetime.now().date()
     for i in range(days, -1, -1):
         day_open = price
-        high = day_open + random.uniform(0, 0.08)
-        low  = day_open - random.uniform(0, 0.08)
+        high = day_open + random.uniform(0, 0.05)
+        low  = day_open - random.uniform(0, 0.05)
         close = random.uniform(low, high)
         rows.append(
             {

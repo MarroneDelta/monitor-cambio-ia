@@ -47,6 +47,9 @@ def main():
     elif page == "cambio_auto":
         from view_cambio_auto import render
         render()
+    elif page == "b3_radar":
+        from view_b3_radar import render
+        render()
 
 
 if __name__ == "__main__":

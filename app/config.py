@@ -44,6 +44,7 @@ BASE_CURRENCY = "BRL"
 PAGES = {
     "dashboard": {"icon": "📊", "label": "Dashboard"},
     "cambio_auto": {"icon": "🤖", "label": "Câmbio Auto"},
+    "b3_radar": {"icon": "🔍", "label": "Radar de Ações"},
 }
 
 # ── Chaves de API ────────────────────────────────────────────────────────────

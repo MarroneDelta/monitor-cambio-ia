@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 import time
 from cambio_services.currency_service import get_current_rate, get_ohlc, get_rate_history
-from cambio_services.news_service import get_economic_news, aggregate_sentiment
+from cambio_services.news_service import get_latest_market_news, aggregate_sentiment
 from components.charts import line_chart, candlestick_chart
 from utils.helpers import render_nav, fmt_brl, trend_badge, confidence_badge, sentiment_badge
 from utils.math_utils import get_forecast
@@ -25,6 +25,7 @@ def render():
     with btn_col:
         if st.button("🔄 Atualizar", key="btn_refresh", width="stretch", type="primary"):
             st.cache_data.clear()
+            st.cache_resource.clear()
             st.rerun()
     
     # Cards de resumo
@@ -96,20 +97,32 @@ def render_candles():
 
 
 def render_intelligent_forecast():
-    st.markdown("### 🤖 Análise de Câmbio via IA")
+    st.markdown("### 🤖 Análise de Câmbio via IA (Correlação NYSE/B3)")
     
     from utils.math_utils import get_ai_analysis
+    from utils.market_engine_b3 import MarketEngineB3
+    
+    if "engine_b3" not in st.session_state:
+        st.session_state.engine_b3 = MarketEngineB3()
+    engine = st.session_state.engine_b3
+    
+    # Coleta dados globais para a IA
+    sp500 = engine.precos.get("^GSPC", 0)
+    dxy = engine.precos.get("DX=F", 0)
     
     usd_data = get_current_rate("USD")
     eur_data = get_current_rate("EUR")
     valor_usd = usd_data.get("rate", 0.0)
     valor_eur = eur_data.get("rate", 0.0)
     
-    if valor_usd == 0 or valor_eur == 0:
-        st.warning("Aguardando cotações da API...")
-        return
+    # Lógica de Stickiness: Só chama a IA se não houver análise ou se o botão Atualizar foi clicado
+    # O botão Atualizar limpa o cache_data, mas precisamos garantir que limpe o session_state também
+    if "last_ai_analysis" not in st.session_state or st.session_state.get("btn_refresh"):
+        with st.spinner("IA analisando contexto global..."):
+            analysis = get_ai_analysis(round(valor_usd, 3), round(valor_eur, 3), sp500=sp500, dxy=dxy)
+            st.session_state.last_ai_analysis = analysis
     
-    analysis = get_ai_analysis(round(valor_usd, 3), round(valor_eur, 3))
+    analysis = st.session_state.last_ai_analysis
     
     # Cards de tendência (compactos)
     c1, c2 = st.columns(2)
@@ -205,7 +218,8 @@ def render_news_section():
     st.markdown("---")
     st.markdown("### 📰 Últimas Notícias Econômicas")
     
-    articles = get_economic_news()
+    from cambio_services.news_service import get_latest_market_news
+    articles = get_latest_market_news()
     if articles:
         for art in articles[:5]:  # Top 5 notícias
             with st.container():

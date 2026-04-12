@@ -57,11 +57,9 @@ Além do texto, retorne no FINAL da resposta um bloco JSON entre as tags <JSON> 
 
 
 @st.cache_data(persist="disk")
-def get_ai_analysis(valor_usd: float, valor_eur: float) -> dict:
+def get_ai_analysis(valor_usd: float, valor_eur: float, sp500: float = 0, dxy: float = 0) -> dict:
     """
-    Chama a OpenAI GPT-4.1-mini para análise de câmbio.
-    Arredondamos os valores para 3 casas para evitar que micro-variações de 
-    centavos invalidem o cache desnecessariamente.
+    Chama a OpenAI GPT-4.1-mini para análise de câmbio com contexto global (NYSE).
     """
     v_usd = round(valor_usd, 3)
     v_eur = round(valor_eur, 3)
@@ -69,14 +67,22 @@ def get_ai_analysis(valor_usd: float, valor_eur: float) -> dict:
         log.warning("OpenAI não configurada (OPENAI_API_KEY vazia)")
         return _fallback(valor_usd, valor_eur)
 
-    prompt = PROMPT_TEMPLATE.format(valor_usd=f"{valor_usd:.4f}", valor_eur=f"{valor_eur:.4f}")
+    # Injetando contexto global se disponível
+    contexto_global = ""
+    if sp500 > 0 and dxy > 0:
+        contexto_global = f"\nINDICADORES GLOBAIS (NYSE):\n- S&P 500: {sp500:.2f}\n- Dollar Index (DXY): {dxy:.2f}\n"
+
+    prompt = PROMPT_TEMPLATE.format(
+        valor_usd=f"{valor_usd:.4f}", 
+        valor_eur=f"{valor_eur:.4f}"
+    ) + contexto_global
 
     try:
-        print("[🤖 IA] Consultando para análise de câmbio...")
+        print("[🤖 IA] Consultando para análise de câmbio (com contexto global)...")
         response = _client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[
-                {"role": "system", "content": "Você é um analista financeiro especialista em câmbio."},
+                {"role": "system", "content": "Você é um analista financeiro especialista em câmbio e mercados globais (NYSE/B3)."},
                 {"role": "user", "content": prompt},
             ],
             max_tokens=1000,
