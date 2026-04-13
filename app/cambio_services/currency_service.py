@@ -53,19 +53,16 @@ def _fetch_from_awesomeapi(currency: str) -> Optional[float]:
 
 @st.cache_data(ttl=10, show_spinner=False)
 def get_current_rate(currency: str) -> Dict:
-    """Busca cotação em tempo real com TTL baixíssimo para o Dashboard."""
+    """Busca cotação exata e calcula variação real para o Dashboard e Robô."""
     rate = None
     change_pct = 0.0
     source = "desconhecido"
 
-    # 1. AwesomeAPI (Prioritária, super rápida)
+    # 1. AwesomeAPI (Melhor fonte para BRL, já traz pctChange)
     try:
         pair = f"{currency}-{BASE_CURRENCY}"
-        r = requests.get(
-            f"https://economia.awesomeapi.com.br/last/{pair}",
-            timeout=5,
-            headers={"User-Agent": "Mozilla/5.0"}
-        )
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        r = requests.get(f"https://economia.awesomeapi.com.br/last/{pair}", timeout=5, headers=headers)
         if r.status_code == 200:
             data = r.json()[pair.replace("-", "")]
             rate = float(data["bid"])
@@ -73,10 +70,24 @@ def get_current_rate(currency: str) -> Dict:
             source = "awesomeapi"
     except: pass
 
-    # 2. HG Brasil Finance (Altamente confiável para BRL)
+    # 2. Yahoo Finance (Restaura cálculo de variação comparando 2 dias)
     if not rate:
         try:
-            # Tenta usar sem chave (limite menor) ou com chave se existir
+            import yfinance as yf
+            ticker = {"USD": "USDBRL=X", "EUR": "EURBRL=X"}.get(currency, f"{currency}BRL=X")
+            # Baixa 2 dias para ter o fechamento de ontem e calcular variação
+            data = yf.download(ticker, period="2d", interval="1d", progress=False, threads=False)
+            if len(data) >= 1:
+                closes = data["Close"].dropna().values.flatten()
+                rate = float(closes[-1])
+                if len(closes) >= 2:
+                    change_pct = ((closes[-1] - closes[-2]) / closes[-2]) * 100
+                source = "yfinance"
+        except: pass
+
+    # 3. HG Brasil Finance 
+    if not rate:
+        try:
             r = requests.get("https://api.hgbrasil.com/finance/quotations", timeout=5)
             if r.status_code == 200:
                 currs = r.json()["results"]["currencies"]
@@ -86,30 +97,8 @@ def get_current_rate(currency: str) -> Dict:
                     source = "hgbrasil"
         except: pass
 
-    # 3. Yahoo Finance
+    # Fallback Emergencial
     if not rate:
-        try:
-            import yfinance as yf
-            ticker = {"USD": "USDBRL=X", "EUR": "EURBRL=X"}.get(currency, f"{currency}BRL=X")
-            data = yf.download(ticker, period="1d", interval="1m", progress=False, threads=False)
-            if not data.empty:
-                rate = float(data["Close"].iloc[-1])
-                source = "yfinance"
-        except: pass
-
-    # 4. ExchangeRate-API
-    if not rate and EXCHANGE_API_KEY:
-        try:
-            url = f"https://v6.exchangerate-api.com/v6/{EXCHANGE_API_KEY}/pair/{currency}/{BASE_CURRENCY}"
-            r = requests.get(url, timeout=5)
-            if r.status_code == 200:
-                rate = r.json().get("conversion_rate")
-                source = "exchangerate-api"
-        except: pass
-
-    # 5. Fallback de Segurança (Caso tudo falhe, gera uma micro-oscilação sobre o último valor)
-    if not rate:
-        log.error(f"[🚨 API] TODAS AS FONTES FALHARAM para {currency}!")
         rate = _FALLBACK_RATES.get(currency, 5.0)
         source = "demo-emergencia"
 
@@ -129,48 +118,38 @@ def get_all_rates() -> Dict[str, Dict]:
 
 # ── Histórico (últimas 24h simulado / API real se disponível) ────────────────
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=600, show_spinner=False)
 def get_rate_history(currency: str, hours: int = 24) -> pd.DataFrame:
-    """Retorna DataFrame com histórico horário de cotações."""
-    history = _fetch_history_awesomeapi(currency, hours)
-    if history is None:
-        history = _simulate_history(currency, hours)
-    return history
-
-
-def _fetch_history_awesomeapi(currency: str, hours: int) -> Optional[pd.DataFrame]:
+    """Retorna histórico real (15m) do Yahoo Finance para o gráfico sparkline."""
     try:
-        pair = f"{currency}-{BASE_CURRENCY}"
-        r = requests.get(
-            f"https://economia.awesomeapi.com.br/json/daily/{pair}/{min(hours, 30)}",
-            timeout=10,
-        )
-        if r.status_code == 200 and r.json():
-            rows = [
-                {
-                    "timestamp": datetime.fromtimestamp(int(d["timestamp"])),
-                    "rate": float(d["bid"]),
-                }
-                for d in r.json()
-            ]
-            df = pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
-            return df
-    except Exception as exc:
-        log.warning("Histórico awesomeapi falhou: %s", exc)
-    return None
+        import yfinance as yf
+        ticker = {"USD": "USDBRL=X", "EUR": "EURBRL=X"}.get(currency, f"{currency}BRL=X")
+        # Puxa 5 dias com intervalo de 15m para um gráfico fluido
+        data = yf.download(ticker, period="5d", interval="15m", progress=False, threads=False)
+        if not data.empty:
+            df = data[["Close"]].copy()
+            df.columns = ["rate"]
+            df = df.reset_index()
+            df.rename(columns={"Datetime": "timestamp", "Date": "timestamp"}, inplace=True)
+            # Filtra apenas as últimas N horas
+            cutoff = datetime.now() - timedelta(hours=hours)
+            df = df[df["timestamp"] >= cutoff].copy()
+            if not df.empty:
+                return df
+    except Exception as e:
+        log.warning(f"Erro ao buscar histórico real: {e}")
 
+    # Fallback se a API falhar (não deixa o gráfico em branco)
+    return _simulate_history(currency, hours)
 
 def _simulate_history(currency: str, hours: int) -> pd.DataFrame:
     base = _FALLBACK_RATES.get(currency, 5.01)
     now = datetime.now()
     rows = []
     price = base
-    for i in range(hours, -1, -1):
-        price += random.uniform(-0.01, 0.01)
-        price = max(price, base * 0.9)
-        rows.append(
-            {"timestamp": now - timedelta(hours=i), "rate": round(price, 4)}
-        )
+    for i in range(hours * 4, -1, -1): # Aumentado número de pontos para a linha não ser reta
+        price += random.uniform(-0.005, 0.005)
+        rows.append({"timestamp": now - timedelta(minutes=i*15), "rate": round(price, 4)})
     return pd.DataFrame(rows)
 
 

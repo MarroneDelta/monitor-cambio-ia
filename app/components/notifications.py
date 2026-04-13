@@ -49,6 +49,7 @@ def build_alert_message(
 
 # ── Canais de envio ──────────────────────────────────────────────────────────
 
+def send_telegram(message: str) -> bool:
     try:
         from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
         if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
