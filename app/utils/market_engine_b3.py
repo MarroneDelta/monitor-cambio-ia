@@ -9,6 +9,7 @@ import random
 import threading
 import requests
 from datetime import datetime, timedelta
+import yfinance as yf
 from collections import deque
 import warnings
 
@@ -88,7 +89,7 @@ class MarketEngineB3:
         todos = {**self.ATIVOS, **self.GLOBAL_ATIVOS}
         for ticker in todos.keys():
             try:
-                preco, abertura, volume = self._fetch_brapi(ticker)
+                preco, abertura, volume = self._fetch_data(ticker)
                 if preco and preco > 0:
                     self.precos[ticker] = preco
                     self.abertura[ticker] = abertura if abertura and abertura > 0 else preco
@@ -110,34 +111,42 @@ class MarketEngineB3:
             return {}
         except: return {}
 
-    def _fetch_brapi(self, ticker):
-        """Busca cotação via Brapi ou fallback HG para índices."""
-        # Se for índice, tenta HG primeiro ou trata erro de token do Brapi
-        if ticker in ["^GSPC", "DXY"]:
-            hg_data = self._fetch_hg_indices()
-            # HG usa nomes diferentes: NASDAQ, IBOVESPA... 
-            # Como o S&P 500 é difícil no free, vamos usar NASDAQ como proxy se necessário
-            if ticker == "^GSPC" and "NASDAQ" in hg_data:
-                return float(hg_data["NASDAQ"]["variation"]), 0, 0 # Simulando via NASDAQ se falhar
-        
+    def _fetch_fallback(self, ticker):
+        """Busca via yfinance com proteção de cabeçalhos."""
+        try:
+            yf_ticker = ticker if ticker.endswith(".SA") or "^" in ticker else f"{ticker}.SA"
+            data = yf.download(yf_ticker, period="2d", interval="1d", progress=False, threads=False)
+            if not data.empty:
+                closes = data["Close"].dropna().values.flatten()
+                preco = float(closes[-1])
+                ref = float(closes[-2]) if len(closes) >= 2 else preco
+                return preco, ref, 0
+            return None, 0, 0
+        except: return None, 0, 0
+
+    def _fetch_data(self, ticker):
+        """Busca cotação tentando Brapi -> Fallback HG/YFinance."""
+        # 1. Tenta Brapi (Ativos B3)
         try:
             url = f"https://brapi.dev/api/quote/{ticker}"
             resp = requests.get(url, timeout=5)
             data = resp.json()
             if 'results' in data and len(data['results']) > 0:
-                result = data['results'][0]
-                preco = float(result.get('regularMarketPrice', 0))
-                # Usar o fechamento anterior para uma variação real de mercado
-                ref = float(result.get('regularMarketPreviousClose', preco))
-                volume = float(result.get('regularMarketVolume', 0))
-                return preco, ref, volume
-            return None, 0, 0
-        except:
-            return None, 0, 0
+                res = data['results'][0]
+                p = float(res.get('regularMarketPrice', 0))
+                r = float(res.get('regularMarketPreviousClose', p))
+                v = float(res.get('regularMarketVolume', 0))
+                if p > 0: return p, r, v
+        except: pass
 
-    def _get_fallback_precos(self, ticker):
-        """Fallback caso o Brapi falhe."""
-        return self.precos.get(ticker, 0.0), self.abertura.get(ticker, 0.0), 0
+        # 2. Tenta HG Brasil (Índices Globais)
+        if ticker in ["^GSPC", "DXY"]:
+            hg = self._fetch_hg_indices()
+            if ticker == "^GSPC" and "NASDAQ" in hg:
+                return float(hg["NASDAQ"]["variation"]), 0, 0 
+
+        # 3. Fallback Final (YFinance)
+        return self._fetch_fallback(ticker)
 
     def tick_mercado(self):
         from components.notifications import send_telegram
@@ -147,28 +156,30 @@ class MarketEngineB3:
             todos = {**self.ATIVOS, **self.GLOBAL_ATIVOS}
             for ticker in todos.keys():
                 try:
-                    # Tenta Brapi direto (mais estável para nuvem)
-                    novo, abertura_ref, volume = self._fetch_brapi(ticker)
+                    novo, abertura_ref, volume = self._fetch_data(ticker)
 
                     if novo and novo > 0:
-                        # Alerta de Volatilidade NYSE (S&P 500)
+                        # Alerta Wall Street
                         if ticker == "^GSPC":
                             prev = self.precos.get(ticker)
-                            if prev:
-                                var_instantanea = (novo / prev - 1) * 100
-                                if var_instantanea < -1.5 and (time.time() - self.last_alert_time > 3600):
-                                    msg = f"⚠️ *ALERTA WALL STREET*: Queda brusca no S&P 500! ({var_instantanea:.2f}%)\nO mercado global está em estresse, dólar pode subir."
-                                    send_telegram(msg)
+                            if prev and (novo != prev):
+                                var_inst = (novo / prev - 1) * 100
+                                if var_inst < -1.5 and (time.time() - self.last_alert_time > 3600):
+                                    send_telegram(f"⚠️ *ALERTA WALL STREET*: S&P 500 em queda! ({var_inst:.2f}%)")
                                     self.last_alert_time = time.time()
 
                         self.precos[ticker] = novo
                         self.maximos[ticker] = max(self.maximos.get(ticker, 0), novo)
                         self.minimos[ticker] = min(self.minimos.get(ticker, 999999), novo)
+                        
+                        # Garante que a abertura nunca seja zero se tivermos dados
+                        if self.abertura.get(ticker, 0) == 0:
+                            self.abertura[ticker] = abertura_ref if abertura_ref > 0 else novo
+
                         if self.abertura.get(ticker, 0) > 0:
                             self.variacao[ticker] = (novo / self.abertura[ticker] - 1) * 100
                         self.historico[ticker].append(novo)
-                except:
-                    pass
+                except: pass
             self.tick += 1
 
     def sinal(self, ticker):
