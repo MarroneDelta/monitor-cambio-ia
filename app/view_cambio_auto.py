@@ -85,128 +85,75 @@ def load_robot_state_from_db():
     return None
 
 def get_seconds_until_next_check(config: dict) -> int:
-    """Calcula quanto tempo o robô deve esperar para a próxima verificação (Híbrido Customizado)."""
-    # 1. Horários Estratégicos Escolhidos pelo Usuário
-    target_slots = config.get("schedule_slots", [9.0, 10.5, 12.0, 13.0, 18.0])
-    
-    # 2. Ciclo de Manutenção (12h ou 24h)
-    m_interval = config.get("maintenance_interval_h", 12)
-    started_at_str = _robot_state.get("started_at")
-    
-    if started_at_str:
-        try:
-            start_dt = datetime.strptime(started_at_str, "%d/%m/%Y %H:%M:%S")
-            start_float = start_dt.hour + start_dt.minute/60.0
-            target_slots.append(start_float)
-            if m_interval == 12:
-                target_slots.append((start_float + 12) % 24)
-        except:
-            pass
-
-    # Horário atual em Brasília (UTC-3)
-    now_utc = datetime.utcnow()
-    now_br  = now_utc - timedelta(hours=3)
-    curr_float = now_br.hour + now_br.minute/60.0 + now_br.second/3600.0
-    
-    next_slot = None
-    for s in sorted(list(set(target_slots))): # set para remover duplicatas
-        if s > curr_float:
-            next_slot = s
-            break
-            
-    if next_slot is not None:
-        diff_hours = next_slot - curr_float
-    else:
-        # Primeiro slot do dia seguinte
-        diff_hours = (24 - curr_float) + min(target_slots)
-        
-    return int(max(diff_hours * 3600, 60)) # No mínimo 1 minuto de espera
+    """Retorna intervalo super curto de 30 segundos para monitoramento instantâneo."""
+    return 30 
 
 def _robot_loop(config: dict):
     """Thread do robô. Executa até expirar ou ser cancelada."""
     run_id    = config.get("run_id")
     currency  = config["currency"]
-    min_target = config["min_target"]
-    max_target = config["max_target"]
+    min_target = float(config["min_target"])
+    max_target = float(config["max_target"])
     expires    = config["expires"]
     user_email = config.get("user_email", "")
     channels   = config.get("channels", ["In-app (painel)"])
-    # Configurações dinâmicas do loop
-    interval = get_seconds_until_next_check(config)
-    next_check_time = (datetime.now() + timedelta(seconds=interval)).strftime("%H:%M:%S")
     
-    print(f"\n[🤖 ROBÔ] Thread iniciada | ID: {run_id} | Modo: {config.get('schedule_mode','interval')}")
-    print(f"[🤖 ROBÔ] Próxima verificação estimada em: {next_check_time}")
+    log.warning(f"\n[🤖 ROBÔ] Thread iniciada | ID: {run_id} | Vigiando {currency}/BRL (INSTANTÂNEO 30s)")
+    log.warning(f"[🤖 ROBÔ] Alvos: Mín R$ {min_target:.4f} | Máx R$ {max_target:.4f}")
 
-    # Garantir que expires seja naive para comparação com datetime.utcnow()
     if expires and expires.tzinfo is not None:
         expires = expires.replace(tzinfo=None)
 
     while datetime.utcnow() < expires:
-        # CHECK DE SEGURANÇA: Se o ID mudou ou mandaram parar, encerra a thread
+        # CHECK DE SEGURANÇA
         with _robot_lock:
             if not _robot_state.get("running") or _robot_state.get("run_id") != run_id:
                 log.warning(f"[🤖 ROBÔ] DNA inválido ou parada solicitada. Encerrando thread ({run_id})...")
                 break
 
         try:
-            rate_data = get_current_rate.__wrapped__(currency)   # bypass cache
-            rate = rate_data.get("rate", 0.0)
+            # Busca cotação bypassando cache para ser instantâneo
+            rate_data = get_current_rate.__wrapped__(currency)
+            rate = float(rate_data.get("rate", 0.0))
+            source = rate_data.get("source", "unknown")
             
             check_time = datetime.now().strftime("%H:%M:%S")
-            log.warning(f"[🤖 {check_time}] {currency}/BRL: R$ {rate:.4f} | ID: {run_id}")
+            log.warning(f"[🤖 {check_time}] {currency}/BRL: R$ {rate:.4f} | Alvo: R$ {min_target:.4f}")
 
             with _robot_lock:
                 _robot_state["last_rate"]  = rate
                 _robot_state["last_check"] = datetime.now().strftime("%d/%m %H:%M:%S")
-                # Não sobrescrevemos o running aqui para não atrapalhar o ID
 
-            if rate <= min_target:
-                log.warning(f"[🚨 {check_time}] MÍNIMO ATINGIDO! {rate:.4f} <= {min_target:.4f} — Disparando alerta...")
-                result = dispatch_alert(currency, rate, min_target, max_target, "min", user_email, channels)
-                log.warning(f"[📨 {check_time}] Resultado do dispatch: {result}")
-                with _robot_lock:
-                    _robot_state["last_trigger"] = f"MÍN atingido — R$ {rate:.4f}"
-                    # Registrar no histórico global
-                    _robot_state["alert_history"].insert(0, {
-                        "time": datetime.now().strftime("%d/%m %H:%M"),
-                        "currency": currency,
-                        "rate": rate,
-                        "trigger": "MÍN atingido"
-                    })
-                    _robot_state["alert_history"] = _robot_state["alert_history"][:50]
-
-            elif rate >= max_target:
-                log.warning(f"[🚨 {check_time}] MÁXIMO ATINGIDO! {rate:.4f} >= {max_target:.4f} — Disparando alerta...")
-                result = dispatch_alert(currency, rate, min_target, max_target, "max", user_email, channels)
-                log.warning(f"[📨 {check_time}] Resultado do dispatch: {result}")
-                with _robot_lock:
-                    _robot_state["last_trigger"] = f"MÁX atingido — R$ {rate:.4f}"
-                    # Registrar no histórico global
-                    _robot_state["alert_history"].insert(0, {
-                        "time": datetime.now().strftime("%d/%m %H:%M"),
-                        "currency": currency,
-                        "rate": rate,
-                        "trigger": "MÁX atingido"
-                    })
-                    _robot_state["alert_history"] = _robot_state["alert_history"][:50]
-            else:
-                print(f"[✅ {check_time}] Cotação dentro do intervalo. Nenhum alerta.")
-
+            if rate > 0:
+                if rate <= min_target:
+                    log.warning(f"[🚨 {check_time}] GATILHO INSTANTÂNEO! {rate:.4f} <= {min_target:.4f}")
+                    result = dispatch_alert(currency, rate, min_target, max_target, "min", user_email, channels)
+                    with _robot_lock:
+                        _robot_state["last_trigger"] = f"MÍN atingido — R$ {rate:.4f} (Instantâneo)"
+                        _robot_state["alert_history"].insert(0, {
+                            "time": datetime.now().strftime("%d/%m %H:%M"),
+                            "currency": currency,
+                            "rate": rate,
+                            "trigger": "MÍN atingido"
+                        })
+                elif rate >= max_target:
+                    log.warning(f"[🚨 {check_time}] GATILHO INSTANTÂNEO! {rate:.4f} >= {max_target:.4f}")
+                    result = dispatch_alert(currency, rate, min_target, max_target, "max", user_email, channels)
+                    with _robot_lock:
+                        _robot_state["last_trigger"] = f"MÁX atingido — R$ {rate:.4f} (Instantâneo)"
+                        _robot_state["alert_history"].insert(0, {
+                            "time": datetime.now().strftime("%d/%m %H:%M"),
+                            "currency": currency,
+                            "rate": rate,
+                            "trigger": "MÁX atingido"
+                        })
+            
         except Exception as exc:
-            log.error("Robô erro: %s", exc)
+            log.error(f"Erro no loop do robô: {exc}")
 
-        # Smart Sleep: Procura o próximo horário, mas garante que o loop rode
-        interval = get_seconds_until_next_check(config)
-        log.info(f"[🤖 ROBÔ] Aguardando {interval}s para próxima verificação.")
-        
-        slept = 0
-        while slept < interval:
-            time.sleep(30) # Check de parada a cada 30s
-            slept += 30
-            with _robot_lock:
-                if not _robot_state.get("running") or _robot_state.get("run_id") != run_id:
-                    return # Encerra imediatamente se o DNA mudar
+        # Dorme 30 segundos
+        interval = 30
+        time.sleep(interval)
 
     with _robot_lock:
         _robot_state["running"] = False

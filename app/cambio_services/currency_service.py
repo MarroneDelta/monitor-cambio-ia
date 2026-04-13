@@ -53,12 +53,12 @@ def _fetch_from_awesomeapi(currency: str) -> Optional[float]:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_current_rate(currency: str) -> Dict:
-    """Busca cotação com 4 camadas de redundância para evitar bloqueios no Cloud."""
+    """Busca cotação com 4+ camadas de redundância para ser infalível."""
     rate = None
     change_pct = 0.0
     source = "fallback"
 
-    # 1. AwesomeAPI (User-Agent real para evitar 403)
+    # 1. AwesomeAPI (Prioritária, super rápida)
     try:
         pair = f"{currency}-{BASE_CURRENCY}"
         r = requests.get(
@@ -73,22 +73,31 @@ def get_current_rate(currency: str) -> Dict:
             source = "awesomeapi"
     except: pass
 
-    # 2. Yahoo Finance (Trata Rate Limit explicitamente)
+    # 2. HG Brasil Finance (Altamente confiável para BRL)
+    if not rate:
+        try:
+            # Tenta usar sem chave (limite menor) ou com chave se existir
+            r = requests.get("https://api.hgbrasil.com/finance/quotations", timeout=5)
+            if r.status_code == 200:
+                currs = r.json()["results"]["currencies"]
+                if currency in currs:
+                    rate = float(currs[currency]["buy"])
+                    change_pct = float(currs[currency]["variation"])
+                    source = "hgbrasil"
+        except: pass
+
+    # 3. Yahoo Finance
     if not rate:
         try:
             import yfinance as yf
             ticker = {"USD": "USDBRL=X", "EUR": "EURBRL=X"}.get(currency, f"{currency}BRL=X")
-            data = yf.download(ticker, period="2d", interval="1d", progress=False, threads=False)
+            data = yf.download(ticker, period="1d", interval="1m", progress=False, threads=False)
             if not data.empty:
-                closes = data["Close"].dropna().values.flatten()
-                if len(closes) > 0:
-                    rate = float(closes[-1])
-                    if len(closes) > 1:
-                        change_pct = (closes[-1] - closes[-2]) / closes[-2] * 100
-                    source = "yfinance"
+                rate = float(data["Close"].iloc[-1])
+                source = "yfinance"
         except: pass
 
-    # 3. ExchangeRate-API (Fallback secundário)
+    # 4. ExchangeRate-API
     if not rate and EXCHANGE_API_KEY:
         try:
             url = f"https://v6.exchangerate-api.com/v6/{EXCHANGE_API_KEY}/pair/{currency}/{BASE_CURRENCY}"
@@ -98,7 +107,7 @@ def get_current_rate(currency: str) -> Dict:
                 source = "exchangerate-api"
         except: pass
 
-    # 4. Fallback de Segurança (Preço mínimo aceitável se tudo falhar)
+    # 5. Fallback de Segurança
     if not rate:
         rate = _FALLBACK_RATES.get(currency, 5.0)
         source = "demo-fallback"
