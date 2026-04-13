@@ -115,10 +115,10 @@ class MarketEngineB3:
             data = resp.json()
             if 'results' in data and len(data['results']) > 0:
                 result = data['results'][0]
-                return float(result.get('regularMarketPrice', 0)), float(result.get('regularMarketVolume', 0))
-            return None, 0
+                return float(result.get('regularMarketPrice', 0)), float(result.get('regularMarketPrice', 0)), float(result.get('regularMarketVolume', 0))
+            return None, 0, 0
         except:
-            return None, 0
+            return None, 0, 0
 
     def _fetch_yfinance(self, ticker):
         try:
@@ -174,9 +174,9 @@ class MarketEngineB3:
             for ticker in todos.keys():
                 if ticker in self.ATIVOS:
                     fonte = self.ATIVOS[ticker].get("fonte", "yfinance")
-                    novo, volume = self._fetch_brapi(ticker) if fonte == "brapi" else self._fetch_yfinance(ticker)
+                    novo, _, volume = self._fetch_brapi(ticker) if fonte == "brapi" else self._fetch_yfinance(ticker)
                 else:
-                    novo, volume = self._fetch_yfinance(ticker)
+                    novo, _, volume = self._fetch_yfinance(ticker)
                 
                 if novo and novo > 0:
                     # Alerta de Volatilidade NYSE (S&P 500)
