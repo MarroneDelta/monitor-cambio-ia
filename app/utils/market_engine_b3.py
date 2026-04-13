@@ -102,7 +102,7 @@ class MarketEngineB3:
                 pass
 
     def _fetch_brapi(self, ticker):
-        """Busca cotação via Brapi. Retorna (preco_atual, preco_abertura, volume)."""
+        """Busca cotação via Brapi. Retorna (preco_atual, preco_referencia, volume)."""
         try:
             url = f"https://brapi.dev/api/quote/{ticker}"
             resp = requests.get(url, timeout=5)
@@ -110,9 +110,10 @@ class MarketEngineB3:
             if 'results' in data and len(data['results']) > 0:
                 result = data['results'][0]
                 preco = float(result.get('regularMarketPrice', 0))
-                abertura = float(result.get('regularMarketOpen', preco))
+                # Usar o fechamento anterior para uma variação real de mercado
+                ref = float(result.get('regularMarketPreviousClose', preco))
                 volume = float(result.get('regularMarketVolume', 0))
-                return preco, abertura, volume
+                return preco, ref, volume
             return None, 0, 0
         except:
             return None, 0, 0
