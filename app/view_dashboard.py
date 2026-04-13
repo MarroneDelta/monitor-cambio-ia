@@ -26,6 +26,7 @@ def render():
         if st.button("🔄 Atualizar", key="btn_refresh", width="stretch", type="primary"):
             st.cache_data.clear()
             st.cache_resource.clear()
+            st.session_state.pop("engine_b3", None)
             st.rerun()
     
     # Cards de resumo

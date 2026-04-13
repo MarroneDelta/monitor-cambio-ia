@@ -53,7 +53,7 @@ class MarketEngineB3:
 
     GLOBAL_ATIVOS = {
         "^GSPC":     {"nome": "S&P 500",          "cor": "#FF6B6B"},
-        "DX=F":      {"nome": "Dólar Index (DXY)","cor": "#4B7BEC"},
+        "DX-Y.NYB":  {"nome": "Dólar Index (DXY)","cor": "#4B7BEC"},
     }
 
     DISPLAY_NAMES = {**{k: v["nome"] for k, v in ATIVOS.items()}, **{k: v["nome"] for k, v in GLOBAL_ATIVOS.items()}}
@@ -92,15 +92,19 @@ class MarketEngineB3:
                 fonte = self.ATIVOS[ticker].get("fonte", "yfinance")
                 if fonte == "brapi":
                     preco, volume = self._fetch_brapi(ticker)
+                    abertura = preco
                 else:
-                    preco, volume = self._fetch_yfinance(ticker)
+                    preco, abertura, volume = self._fetch_yfinance(ticker)
                 
                 if preco and preco > 0:
                     self.precos[ticker] = preco
-                    self.abertura[ticker] = preco
+                    self.abertura[ticker] = abertura if abertura else preco
                     self.maximos[ticker] = preco
                     self.minimos[ticker] = preco
                     self.historico[ticker].append(preco)
+                    # Calcula variação inicial
+                    if self.abertura[ticker] > 0:
+                        self.variacao[ticker] = (preco - self.abertura[ticker]) / self.abertura[ticker]
             except:
                 pass
 
@@ -132,17 +136,21 @@ class MarketEngineB3:
                 else:
                     prices = col_data.dropna().values
                 
-                # Busca reversa pelo último valor não-zero
-                preco = 0
-                for p in reversed(prices):
-                    if p > 0:
-                        preco = float(p)
-                        break
+                # Busca reversa pelo último valor não-zero (atual) e o anterior (referência)
+                preco_atual = 0
+                preco_anterior = 0
                 
-                if preco == 0: return None, 0
+                valid_prices = [p for p in reversed(prices) if p > 0]
+                if len(valid_prices) >= 1:
+                    preco_atual = float(valid_prices[0])
+                if len(valid_prices) >= 2:
+                    preco_anterior = float(valid_prices[1])
+                else:
+                    preco_anterior = preco_atual # Fallback se só houver um dado
+                
+                if preco_atual == 0: return None, 0, 0
 
-                # Volume (opcional, tenta pegar se existir)
-                volume = 0
+                return preco_atual, preco_anterior, 0
                 if 'Volume' in dados.columns:
                     vol_data = dados['Volume']
                     vols = vol_data.iloc[:, 0].values if isinstance(vol_data, pd.DataFrame) else vol_data.values

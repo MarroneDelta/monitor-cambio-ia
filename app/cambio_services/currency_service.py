@@ -51,7 +51,7 @@ def _fetch_from_awesomeapi(currency: str) -> Optional[float]:
     return None
 
 
-@st.cache_data(ttl=43200, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_current_rate(currency: str) -> Dict:
     """Retorna cotação atual com metadados."""
     rate = _fetch_from_awesomeapi(currency) or _fetch_from_api(currency)
@@ -80,7 +80,7 @@ def get_all_rates() -> Dict[str, Dict]:
 
 # ── Histórico (últimas 24h simulado / API real se disponível) ────────────────
 
-@st.cache_data(ttl=43200, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_rate_history(currency: str, hours: int = 24) -> pd.DataFrame:
     """Retorna DataFrame com histórico horário de cotações."""
     history = _fetch_history_awesomeapi(currency, hours)
