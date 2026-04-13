@@ -52,12 +52,12 @@ def render():
     with c_sp:
         sp_val = engine.precos.get("^GSPC", 0)
         sp_var = engine.variacao.get("^GSPC", 0)
-        st.metric("S&P 500 (NYSE)", f"{sp_val:,.2f}", f"{sp_var:+.2f}%")
+        st.metric("S&P 500 (NYSE)", f"{sp_val:,.2f}" if sp_val > 0 else "---", f"{sp_var:+.2f}%" if sp_val > 0 else None)
     
     with c_dxy:
-        dxy_val = engine.precos.get("DX-Y.NYB", 0)
-        dxy_var = engine.variacao.get("DX-Y.NYB", 0)
-        st.metric("Dólar Index (DXY)", f"{dxy_val:.2f}", f"{dxy_var:+.2f}%", delta_color="inverse")
+        dxy_val = engine.precos.get("DXY", 0)
+        dxy_var = engine.variacao.get("DXY", 0)
+        st.metric("Dólar Index (DXY)", f"{dxy_val:.2f}" if dxy_val > 0 else "---", f"{dxy_var:+.2f}%" if dxy_val > 0 else None, delta_color="inverse")
     
     with c_corr:
         # Lógica Profissional de Sentimento Global (Risk-On / Risk-Off)
