@@ -8,7 +8,6 @@ import numpy as np
 import random
 import threading
 import requests
-import yfinance as yf
 from datetime import datetime, timedelta
 from collections import deque
 import warnings
@@ -45,10 +44,10 @@ class MarketEngineB3:
         "PETR4":     {"nome": "Petrobrás",              "setor": "Energia",    "cor": "#D85A30", "fonte": "brapi"},
         "VALE3":     {"nome": "Vale",                   "setor": "Mineração",  "cor": AMBER,     "fonte": "brapi"},
         "MGLU3":     {"nome": "Magazine Luiza",         "setor": "Retail",     "cor": "#5DCAA5", "fonte": "brapi"},
-        "BOVA11.SA": {"nome": "ETF Ibovespa",           "setor": "ETF",        "cor": TEAL,      "fonte": "yfinance"},
-        "MXRF11.SA": {"nome": "FII Diversificado",      "setor": "FII",        "cor": GRAY,      "fonte": "yfinance"},
-        "WEGE3.SA":  {"nome": "WEG Indústria",          "setor": "Indústria",  "cor": AMBER,     "fonte": "yfinance"},
-        "BBDC4.SA":  {"nome": "Bradesco",               "setor": "Banco",      "cor": "#7F77DD", "fonte": "yfinance"},
+        "BOVA11":    {"nome": "ETF Ibovespa",           "setor": "ETF",        "cor": TEAL,      "fonte": "brapi"},
+        "MXRF11":    {"nome": "FII Diversificado",      "setor": "FII",        "cor": GRAY,      "fonte": "brapi"},
+        "WEGE3":     {"nome": "WEG Indústria",          "setor": "Indústria",  "cor": AMBER,     "fonte": "brapi"},
+        "BBDC4":     {"nome": "Bradesco",               "setor": "Banco",      "cor": "#7F77DD", "fonte": "brapi"},
     }
 
     GLOBAL_ATIVOS = {
@@ -89,7 +88,7 @@ class MarketEngineB3:
         todos = {**self.ATIVOS, **self.GLOBAL_ATIVOS}
         for ticker in todos.keys():
             try:
-                preco, abertura, volume = self._fetch_yfinance_com_historico(ticker)
+                preco, abertura, volume = self._fetch_brapi(ticker)
                 if preco and preco > 0:
                     self.precos[ticker] = preco
                     self.abertura[ticker] = abertura if abertura and abertura > 0 else preco
@@ -118,38 +117,9 @@ class MarketEngineB3:
         except:
             return None, 0, 0
 
-    def _fetch_yfinance_com_historico(self, ticker):
-        """Busca 1 mês de histórico para análise técnica robusta. Retorna (preco_atual, preco_anterior, volume)."""
-        try:
-            # Puxa 1 mês para garantir que o Robô tenha histórico (MM20, MM50) imediatamente
-            dados = yf.download(ticker, period="1mo", interval="1d", progress=False, threads=False)
-            if dados.empty:
-                return None, 0, 0
-
-            col_data = dados['Close']
-            if isinstance(col_data, pd.DataFrame):
-                prices = col_data.iloc[:, 0].dropna().values
-            else:
-                prices = col_data.dropna().values
-
-            valid_prices = [float(p) for p in prices if p > 0]
-            if not valid_prices:
-                return None, 0, 0
-
-            preco_atual = valid_prices[-1]
-            preco_anterior = valid_prices[-2] if len(valid_prices) >= 2 else preco_atual
-
-            # Preenche histórico com os últimos dias para gráfico não ficar plano
-            for p in valid_prices:
-                self.historico[ticker].append(p)
-
-            return preco_atual, preco_anterior, 0
-        except:
-            return None, 0, 0
-
-    def _fetch_yfinance(self, ticker):
-        """Alias simplificado para tick_mercado. Retorna (preco, abertura_ref, volume)."""
-        return self._fetch_yfinance_com_historico(ticker)
+    def _get_fallback_precos(self, ticker):
+        """Fallback caso o Brapi falhe."""
+        return self.precos.get(ticker, 0.0), self.abertura.get(ticker, 0.0), 0
 
     def tick_mercado(self):
         from components.notifications import send_telegram
@@ -159,11 +129,8 @@ class MarketEngineB3:
             todos = {**self.ATIVOS, **self.GLOBAL_ATIVOS}
             for ticker in todos.keys():
                 try:
-                    fonte = self.ATIVOS.get(ticker, {}).get("fonte", "yfinance")
-                    if fonte == "brapi" and ticker in self.ATIVOS:
-                        novo, abertura_ref, volume = self._fetch_brapi(ticker)
-                    else:
-                        novo, abertura_ref, volume = self._fetch_yfinance(ticker)
+                    # Tenta Brapi direto (mais estável para nuvem)
+                    novo, abertura_ref, volume = self._fetch_brapi(ticker)
 
                     if novo and novo > 0:
                         # Alerta de Volatilidade NYSE (S&P 500)

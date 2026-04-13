@@ -70,22 +70,7 @@ def get_current_rate(currency: str) -> Dict:
             source = "awesomeapi"
     except: pass
 
-    # 2. Yahoo Finance (Restaura cálculo de variação comparando 2 dias)
-    if not rate:
-        try:
-            import yfinance as yf
-            ticker = {"USD": "USDBRL=X", "EUR": "EURBRL=X"}.get(currency, f"{currency}BRL=X")
-            # Baixa 2 dias para ter o fechamento de ontem e calcular variação
-            data = yf.download(ticker, period="2d", interval="1d", progress=False, threads=False)
-            if len(data) >= 1:
-                closes = data["Close"].dropna().values.flatten()
-                rate = float(closes[-1])
-                if len(closes) >= 2:
-                    change_pct = ((closes[-1] - closes[-2]) / closes[-2]) * 100
-                source = "yfinance"
-        except: pass
-
-    # 3. HG Brasil Finance 
+    # 2. HG Brasil Finance (Tornado titular como backup imediato)
     if not rate:
         try:
             r = requests.get("https://api.hgbrasil.com/finance/quotations", timeout=3)
@@ -120,31 +105,35 @@ def get_all_rates() -> Dict[str, Dict]:
 
 @st.cache_data(ttl=600, show_spinner=False)
 def get_rate_history(currency: str, hours: int = 24) -> pd.DataFrame:
-    """Retorna histórico real (15m) do Yahoo Finance para o gráfico sparkline."""
+    """Retorna histórico real da AwesomeAPI (últimos 30 dias de fechamento)."""
     try:
-        import yfinance as yf
-        ticker = {"USD": "USDBRL=X", "EUR": "EURBRL=X"}.get(currency, f"{currency}BRL=X")
-        # Puxa 5 dias com intervalo de 15m para um gráfico fluido
-        data = yf.download(ticker, period="5d", interval="15m", progress=False, threads=False)
-        if not data.empty:
-            df = data[["Close"]].copy()
-            df.columns = ["rate"]
-            df = df.reset_index()
-            df.rename(columns={"Datetime": "timestamp", "Date": "timestamp"}, inplace=True)
-            # Filtra apenas as últimas N horas (Sincronizando Timezone)
-            # Filtra apenas as últimas N horas (Sincronizando via pd.Timestamp)
+        pair = f"{currency}-{BASE_CURRENCY}"
+        # A AwesomeAPI fornece histórico de fechamentos diários
+        r = requests.get(f"https://economia.awesomeapi.com.br/json/daily/{pair}/30", timeout=3)
+        if r.status_code == 200:
+            data = r.json()
+            rows = []
+            for item in data:
+                # O timestamp da AwesomeAPI é em segundos
+                ts = datetime.fromtimestamp(int(item["timestamp"]))
+                rows.append({"timestamp": ts, "rate": float(item["bid"])})
+            
+            df = pd.DataFrame(rows)
+            # Ordena do mais antigo para o mais novo para o gráfico
+            df = df.sort_values("timestamp")
+            
+            # Garante que a coluna da tabela seja do tipo Datetime com fuso horário (UTC)
             import pytz
-            cutoff_naive = datetime.now(pytz.UTC) - timedelta(hours=hours)
-            cutoff = pd.Timestamp(cutoff_naive)
+            df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_localize(pytz.UTC)
             
-            # Garante que a coluna da tabela seja do tipo Datetime com fuso horário
-            df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-            
+            # Filtra apenas o que for pertinente
+            cutoff = pd.Timestamp(datetime.now(pytz.UTC) - timedelta(hours=hours))
             df = df[df["timestamp"] >= cutoff].copy()
+            
             if not df.empty:
                 return df
     except Exception as e:
-        log.warning(f"Erro ao buscar histórico real: {e}")
+        log.warning(f"Erro ao buscar histórico AwesomeAPI: {e}")
 
     # Fallback se a API falhar (não deixa o gráfico em branco)
     return _simulate_history(currency, hours)
