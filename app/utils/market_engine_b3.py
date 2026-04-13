@@ -139,11 +139,34 @@ class MarketEngineB3:
                 if p > 0: return p, r, v
         except: pass
 
-        # 2. Tenta HG Brasil (Índices Globais)
+        # 2. Tenta HG Brasil (Índices Globais e Moedas para DXY)
         if ticker in ["^GSPC", "DXY"]:
-            hg = self._fetch_hg_indices()
-            if ticker == "^GSPC" and "NASDAQ" in hg:
-                return float(hg["NASDAQ"]["variation"]), 0, 0 
+            try:
+                r = requests.get("https://api.hgbrasil.com/finance/quotations", timeout=3)
+                if r.status_code == 200:
+                    hg = r.json()["results"]
+                    
+                    if ticker == "^GSPC":
+                        # Usa NASDAQ do HG como proxy de Wall Street (tem pontos e variação)
+                        stk = hg["stocks"]["NASDAQ"]
+                        p = float(stk["points"])
+                        v = float(stk["variation"])
+                        # Calcula um fechamento de referência a partir da variação
+                        ref = p / (1 + (v/100))
+                        return p, ref, 0
+                    
+                    if ticker == "DXY":
+                        # DXY Sintético: Média das variações de moedas fortes (EUR, GBP, JPY) vs USD
+                        currs = hg["currencies"]
+                        # Invertemos a variação pois o HG dá Moeda/BRL e queremos Moeda/USD aproximado
+                        v_eur = currs["EUR"]["variation"]
+                        v_gbp = currs["GBP"]["variation"]
+                        v_jpy = currs.get("JPY", {"variation": 0})["variation"]
+                        
+                        v_dxy = (v_eur + v_gbp + v_jpy) / 3
+                        # Para o DXY, mostramos 100 como base e a variação sintética
+                        return 100.0, 100.0 / (1 + (v_dxy/100)), 0
+            except: pass
 
         # 3. Fallback Final (YFinance)
         return self._fetch_fallback(ticker)
