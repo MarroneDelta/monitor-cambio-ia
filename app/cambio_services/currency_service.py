@@ -53,59 +53,55 @@ def _fetch_from_awesomeapi(currency: str) -> Optional[float]:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_current_rate(currency: str) -> Dict:
-    """Retorna cotação atual com metadados e variação. Multi-fonte para resiliência no Cloud."""
+    """Busca cotação com 4 camadas de redundância para evitar bloqueios no Cloud."""
     rate = None
     change_pct = 0.0
-    source = "demo"
+    source = "fallback"
 
-    # Fonte 1: AwesomeAPI (melhor para BRL, traz pctChange nativo)
+    # 1. AwesomeAPI (User-Agent real para evitar 403)
     try:
         pair = f"{currency}-{BASE_CURRENCY}"
         r = requests.get(
             f"https://economia.awesomeapi.com.br/last/{pair}",
-            timeout=8,
+            timeout=5,
             headers={"User-Agent": "Mozilla/5.0"}
         )
         if r.status_code == 200:
-            key = pair.replace("-", "")
-            data = r.json()[key]
+            data = r.json()[pair.replace("-", "")]
             rate = float(data["bid"])
             change_pct = float(data.get("pctChange", 0.0))
-            source = "live"
-    except:
-        pass
+            source = "awesomeapi"
+    except: pass
 
-    # Fonte 2: Yahoo Finance (funciona bem em ambientes cloud)
+    # 2. Yahoo Finance (Trata Rate Limit explicitamente)
     if not rate:
         try:
             import yfinance as yf
-            ticker_map = {"USD": "USDBRL=X", "EUR": "EURBRL=X"}
-            yf_ticker = ticker_map.get(currency, f"{currency}BRL=X")
-            dados = yf.download(yf_ticker, period="2d", interval="1d", progress=False, threads=False)
-            if not dados.empty:
-                closes = dados["Close"].dropna().values
-                if isinstance(closes[0], (list, type(closes))):
-                    closes = [float(c) for row in closes for c in (row if hasattr(row, '__iter__') else [row])]
-                closes = [float(c) for c in closes if c > 0]
-                if len(closes) >= 1:
-                    rate = closes[-1]
-                    if len(closes) >= 2:
+            ticker = {"USD": "USDBRL=X", "EUR": "EURBRL=X"}.get(currency, f"{currency}BRL=X")
+            data = yf.download(ticker, period="2d", interval="1d", progress=False, threads=False)
+            if not data.empty:
+                closes = data["Close"].dropna().values.flatten()
+                if len(closes) > 0:
+                    rate = float(closes[-1])
+                    if len(closes) > 1:
                         change_pct = (closes[-1] - closes[-2]) / closes[-2] * 100
-                    source = "live"
-        except:
-            pass
+                    source = "yfinance"
+        except: pass
 
-    # Fonte 3: ExchangeRate-API (fallback com chave)
-    if not rate:
-        rate = _fetch_from_api(currency)
-        if rate:
-            source = "live"
+    # 3. ExchangeRate-API (Fallback secundário)
+    if not rate and EXCHANGE_API_KEY:
+        try:
+            url = f"https://v6.exchangerate-api.com/v6/{EXCHANGE_API_KEY}/pair/{currency}/{BASE_CURRENCY}"
+            r = requests.get(url, timeout=5)
+            if r.status_code == 200:
+                rate = r.json().get("conversion_rate")
+                source = "exchangerate-api"
+        except: pass
 
-    # Fallback demo (último recurso)
+    # 4. Fallback de Segurança (Preço mínimo aceitável se tudo falhar)
     if not rate:
-        base = _FALLBACK_RATES.get(currency, 5.0)
-        rate = round(base + random.uniform(-0.01, 0.01), 4)
-        source = "demo"
+        rate = _FALLBACK_RATES.get(currency, 5.0)
+        source = "demo-fallback"
 
     return {
         "currency": currency,
