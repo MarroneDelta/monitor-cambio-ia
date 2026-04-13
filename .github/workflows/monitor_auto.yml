@@ -3,8 +3,8 @@ name: 🤖 Robô Eterno 24/7
 
 on:
   schedule:
-    # Roda a cada 1 hora para não perder movimentos bruscos de mercado
-    - cron: '0 * * * *'
+    # Repositório público = Actions ilimitado. Verifica a cada 5 minutos (máxima frequência do cron)
+    - cron: '*/5 * * * *'
   workflow_dispatch: # Permite rodar manualmente pelo site do GitHub
 
 jobs:
