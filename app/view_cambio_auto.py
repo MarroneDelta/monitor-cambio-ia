@@ -124,29 +124,42 @@ def _robot_loop(config: dict):
                 _robot_state["last_rate"]  = rate
                 _robot_state["last_check"] = datetime.now().strftime("%d/%m %H:%M:%S")
 
+            # 3. Verifica limites com trava de 1 minuto (Alta Performance)
+            now = datetime.now()
+            last_alert = _robot_state.get("last_alert_time_obj")
+            can_alert = True
+            
+            if last_alert and (now - last_alert).total_seconds() < 60:
+                can_alert = False
+
             if rate > 0:
-                if rate <= min_target:
-                    log.warning(f"[🚨 {check_time}] GATILHO INSTANTÂNEO! {rate:.4f} <= {min_target:.4f}")
-                    result = dispatch_alert(currency, rate, min_target, max_target, "min", user_email, channels)
+                triggered = False
+                trigger_msg = ""
+                
+                if rate <= min_target and can_alert:
+                    log.warning(f"[🚨 {check_time}] GATILHO! {rate:.4f} <= {min_target:.4f}")
+                    dispatch_alert(currency, rate, min_target, max_target, "min", user_email, channels)
+                    triggered = True
+                    trigger_msg = "MÍN atingido"
+                elif rate >= max_target and can_alert:
+                    log.warning(f"[🚨 {check_time}] GATILHO! {rate:.4f} >= {max_target:.4f}")
+                    dispatch_alert(currency, rate, min_target, max_target, "max", user_email, channels)
+                    triggered = True
+                    trigger_msg = "MÁX atingido"
+
+                if triggered:
                     with _robot_lock:
-                        _robot_state["last_trigger"] = f"MÍN atingido — R$ {rate:.4f} (Instantâneo)"
+                        _robot_state["last_alert_time_obj"] = now
+                        _robot_state["last_trigger"] = f"{trigger_msg} — R$ {rate:.4f} (Alerta enviado)"
                         _robot_state["alert_history"].insert(0, {
-                            "time": datetime.now().strftime("%d/%m %H:%M"),
+                            "time": now.strftime("%d/%m %H:%M"),
                             "currency": currency,
                             "rate": rate,
-                            "trigger": "MÍN atingido"
+                            "trigger": trigger_msg
                         })
-                elif rate >= max_target:
-                    log.warning(f"[🚨 {check_time}] GATILHO INSTANTÂNEO! {rate:.4f} >= {max_target:.4f}")
-                    result = dispatch_alert(currency, rate, min_target, max_target, "max", user_email, channels)
-                    with _robot_lock:
-                        _robot_state["last_trigger"] = f"MÁX atingido — R$ {rate:.4f} (Instantâneo)"
-                        _robot_state["alert_history"].insert(0, {
-                            "time": datetime.now().strftime("%d/%m %H:%M"),
-                            "currency": currency,
-                            "rate": rate,
-                            "trigger": "MÁX atingido"
-                        })
+                elif not can_alert and (rate <= min_target or rate >= max_target):
+                    # Em cooldown, apenas loga
+                    pass
             
         except Exception as exc:
             log.error(f"Erro no loop do robô: {exc}")
@@ -162,6 +175,12 @@ def _robot_loop(config: dict):
 
 
 def _start_robot(config: dict, skip_db: bool = False):
+    # Proteção contra dupla inicialização: se já estiver rodando, não faz nada
+    with _robot_lock:
+        if _robot_state.get("running"):
+            log.warning("[🤖 ROBÔ] Tentativa de inicialização ignorada: Robô já está ativo.")
+            return
+
     new_run_id = str(uuid.uuid4())
     config["run_id"] = new_run_id
     

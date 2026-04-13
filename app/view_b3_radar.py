@@ -60,13 +60,66 @@ def render():
         st.metric("Dólar Index (DXY)", f"{dxy_val:.2f}", f"{dxy_var:+.2f}%", delta_color="inverse")
     
     with c_corr:
-        # Lógica de correlação simples para orientação
+        # Lógica Profissional de Sentimento Global (Risk-On / Risk-Off)
         if sp_var < -0.5:
-            st.warning("⚠️ Risk-Off (Dólar ↑)")
+            sentiment_type = "OFF"
+            title = "Cautela (Risk-Off)"
+            desc = "Mercado Global em modo defensivo. Capital fugindo para o porto seguro do Dólar."
+            glow_color = "#E24B4A" # Vermelho
+            bg_color = "rgba(226, 75, 74, 0.05)"
         elif sp_var > 0.5:
-            st.success("✅ Risk-On (BRL ↑)")
+            sentiment_type = "ON"
+            title = "Otimismo (Risk-On)"
+            desc = "Fluxo favorável para ativos de risco. Capital entrando no Brasil e na B3."
+            glow_color = "#1D9E75" # Verde
+            bg_color = "rgba(29, 158, 117, 0.05)"
         else:
-            st.info("⏸️ Mercado Lateral")
+            sentiment_type = "NEUTRO"
+            title = "Expectativa (Lateral)"
+            desc = "Mercado aguardando sinais mais fortes. Estabilidade momentânea."
+            glow_color = "#378ADD" # Azul
+            bg_color = "rgba(55, 138, 221, 0.05)"
+
+        # Card Premium Customizado em HTML/CSS
+        st.markdown(f"""
+            <style>
+                @keyframes pulse-glow {{ 0% {{ box-shadow: 0 0 5px {glow_color}33; }} 50% {{ box-shadow: 0 0 20px {glow_color}66; }} 100% {{ box-shadow: 0 0 5px {glow_color}33; }} }}
+                .premium-card {{
+                    background: {bg_color};
+                    backdrop-filter: blur(10px);
+                    border: 1px solid {glow_color}55;
+                    border-radius: 12px;
+                    padding: 15px;
+                    height: 120px;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    animation: pulse-glow 3s infinite ease-in-out;
+                    transition: all 0.3s ease;
+                }}
+                .premium-title {{ color: {glow_color}; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; margin-bottom: 5px; display: flex; align-items: center; gap: 8px; }}
+                .premium-desc {{ color: #D3D1C7; font-size: 0.75rem; line-height: 1.3; margin: 0; }}
+            </style>
+            <div class="premium-card">
+                <div class="premium-title">
+                    <span>🧠 INSIGHT DE MERCADO</span>
+                </div>
+                <h6 style="color:white; margin:0 0 5px 0; font-size: 1rem;">{title}</h6>
+                <p class="premium-desc">{desc}</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+    # Guia de Especialista (Expander Premium)
+    with st.expander("🎓 Como o Segredo dos Grandes Investidores funciona?"):
+        st.markdown(f"""
+        <div style="font-size: 0.85rem; color: #888780;">
+            O <b>Sentimento Global</b> é o motor que move o câmbio. 
+            <br><br>
+            • <b>Risk-On:</b> Quando o S&P 500 (EUA) sobe, o mundo está otimista. Investidores vendem Dólar para comprar ações e moedas de países emergentes como o Brasil. Isso faz o nosso Dólar cair e a nossa Bolsa subir.
+            <br><br>
+            • <b>Risk-Off:</b> Quando o S&P 500 cai e o Dólar Global (DXY) sobe, o mercado está com medo. O dinheiro foge para a segurança dos EUA, o que pressiona o nosso Dólar para cima e a nossa Bolsa para baixo.
+        </div>
+        """, unsafe_allow_html=True)
 
     # Lógica de Atualização Automática (Restaurada)
     if 'last_b3_update' not in st.session_state:
@@ -138,16 +191,46 @@ def render():
 
     # --- TAB 3: SINAIS ---
     with tab3:
-        st.markdown("#### 🎯 Estratégia do Robô")
+        st.markdown("#### 🎯 Estratégia do Robô de Elite")
+        st.caption("Baseado em Médias Móveis (MM20/MM50) e Volatilidade de 30 dias")
+        
         cols = st.columns(2)
         for i, t in enumerate(sorted(engine.ATIVOS.keys())):
             with cols[i % 2]:
                 sig, bg, fg = engine.sinal(t)
+                v = engine.variacao.get(t, 0)
+                
+                # Ícone dinâmico baseado no sinal
+                icon = "🚀" if sig == "COMPRA" else "🎯" if sig == "REALIZAR" else "🛡️" if sig == "ATENÇÃO" else "⏸️"
+                
+                # Card Premium Estilizado
                 st.markdown(f"""
-                <div style='background-color: {bg}; padding: 15px; border-radius: 10px; border-left: 5px solid {fg}; margin-bottom: 10px;'>
-                    <h5 style='color: {fg}; margin: 0;'>{t} - {engine.DISPLAY_NAMES[t]}</h5>
-                    <p style='font-size: 1.2rem; font-weight: bold; margin: 5px 0; color: {fg};'>{sig}</p>
-                    <small style='color: #666;'>Variação: {engine.variacao.get(t, 0):+.2f}%</small>
+                <div style='
+                    background: rgba(255, 255, 255, 0.02);
+                    backdrop-filter: blur(10px);
+                    padding: 20px;
+                    border-radius: 15px;
+                    border: 1px solid {fg}44;
+                    border-left: 6px solid {fg};
+                    margin-bottom: 20px;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                    transition: transform 0.2s;
+                '>
+                    <div style='display: flex; justify-content: space-between; align-items: center;'>
+                        <span style='color: #888780; font-size: 0.8rem; font-weight: 600;'>{t}</span>
+                        <span style='background: {fg}22; color: {fg}; padding: 2px 8px; border-radius: 20px; font-size: 0.7rem; font-weight: bold;'>B3 ACTIVE</span>
+                    </div>
+                    <h5 style='color: white; margin: 10px 0 5px 0; font-size: 1.1rem;'>{engine.DISPLAY_NAMES[t]}</h5>
+                    <div style='display: flex; align-items: center; gap: 10px; margin: 15px 0;'>
+                        <span style='font-size: 1.8rem;'>{icon}</span>
+                        <div style='display: flex; flex-direction: column;'>
+                            <span style='color: {fg}; font-size: 1.2rem; font-weight: 800; letter-spacing: 1px;'>{sig}</span>
+                            <span style='color: {"#26de81" if v >= 0 else "#ff6b6b"}; font-size: 0.85rem; font-weight: 600;'>Var. Dia: {v:+.2f}%</span>
+                        </div>
+                    </div>
+                    <div style='border-top: 1px solid rgba(255,255,255,0.05); padding-top: 10px; margin-top: 10px;'>
+                        <small style='color: #5F5E5A; font-style: italic;'>Sugestão do robô baseada em tendência de curto prazo.</small>
+                    </div>
                 </div>
                 """, unsafe_allow_html=True)
 

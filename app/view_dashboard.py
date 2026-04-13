@@ -116,14 +116,24 @@ def render_intelligent_forecast():
     valor_usd = usd_data.get("rate", 0.0)
     valor_eur = eur_data.get("rate", 0.0)
     
-    # Lógica de Stickiness: Só chama a IA se não houver análise ou se o botão Atualizar foi clicado
-    # O botão Atualizar limpa o cache_data, mas precisamos garantir que limpe o session_state também
-    if "last_ai_analysis" not in st.session_state or st.session_state.get("btn_refresh"):
-        with st.spinner("IA analisando contexto global..."):
+    # Lógica de IA SOB DEMANDA (Manual)
+    if "last_ai_analysis" not in st.session_state:
+        st.info("💡 Clique no botão abaixo para gerar uma análise profunda do mercado com IA.")
+        if st.button("🧠 Gerar Análise de Mercado (IA)", type="secondary"):
+            with st.spinner("IA analisando contexto global... (esta ação consome créditos)"):
+                analysis = get_ai_analysis(round(valor_usd, 3), round(valor_eur, 3), sp500=sp500, dxy=dxy)
+                st.session_state.last_ai_analysis = analysis
+                st.rerun()
+        return # Interrompe a renderização desta seção se não houver análise
+
+    analysis = st.session_state.last_ai_analysis
+    
+    # Botão para atualizar a análise existente
+    if st.button("🔄 Atualizar Análise IA", help="Gera uma nova análise baseada nos preços atuais"):
+        with st.spinner("Atualizando análise..."):
             analysis = get_ai_analysis(round(valor_usd, 3), round(valor_eur, 3), sp500=sp500, dxy=dxy)
             st.session_state.last_ai_analysis = analysis
-    
-    analysis = st.session_state.last_ai_analysis
+            st.rerun()
     
     # Cards de tendência (compactos)
     c1, c2 = st.columns(2)

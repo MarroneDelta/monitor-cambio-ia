@@ -27,7 +27,7 @@ def _fetch_from_api(currency: str) -> Optional[float]:
             f"https://v6.exchangerate-api.com/v6/{EXCHANGE_API_KEY}"
             f"/pair/{currency}/{BASE_CURRENCY}"
         )
-        r = requests.get(url, timeout=8)
+        r = requests.get(url, timeout=3)
         if r.status_code == 200:
             data = r.json()
             return float(data.get("conversion_rate", 0)) or None
@@ -41,7 +41,7 @@ def _fetch_from_awesomeapi(currency: str) -> Optional[float]:
     try:
         pair = f"{currency}-{BASE_CURRENCY}"
         r = requests.get(
-            f"https://economia.awesomeapi.com.br/last/{pair}", timeout=8
+            f"https://economia.awesomeapi.com.br/last/{pair}", timeout=3
         )
         if r.status_code == 200:
             key = pair.replace("-", "")
@@ -62,7 +62,7 @@ def get_current_rate(currency: str) -> Dict:
     try:
         pair = f"{currency}-{BASE_CURRENCY}"
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        r = requests.get(f"https://economia.awesomeapi.com.br/last/{pair}", timeout=5, headers=headers)
+        r = requests.get(f"https://economia.awesomeapi.com.br/last/{pair}", timeout=3, headers=headers)
         if r.status_code == 200:
             data = r.json()[pair.replace("-", "")]
             rate = float(data["bid"])
@@ -88,7 +88,7 @@ def get_current_rate(currency: str) -> Dict:
     # 3. HG Brasil Finance 
     if not rate:
         try:
-            r = requests.get("https://api.hgbrasil.com/finance/quotations", timeout=5)
+            r = requests.get("https://api.hgbrasil.com/finance/quotations", timeout=3)
             if r.status_code == 200:
                 currs = r.json()["results"]["currencies"]
                 if currency in currs:
@@ -131,8 +131,15 @@ def get_rate_history(currency: str, hours: int = 24) -> pd.DataFrame:
             df.columns = ["rate"]
             df = df.reset_index()
             df.rename(columns={"Datetime": "timestamp", "Date": "timestamp"}, inplace=True)
-            # Filtra apenas as últimas N horas
-            cutoff = datetime.now() - timedelta(hours=hours)
+            # Filtra apenas as últimas N horas (Sincronizando Timezone)
+            # Filtra apenas as últimas N horas (Sincronizando via pd.Timestamp)
+            import pytz
+            cutoff_naive = datetime.now(pytz.UTC) - timedelta(hours=hours)
+            cutoff = pd.Timestamp(cutoff_naive)
+            
+            # Garante que a coluna da tabela seja do tipo Datetime com fuso horário
+            df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+            
             df = df[df["timestamp"] >= cutoff].copy()
             if not df.empty:
                 return df

@@ -56,10 +56,11 @@ Além do texto, retorne no FINAL da resposta um bloco JSON entre as tags <JSON> 
 """
 
 
-@st.cache_data(persist="disk")
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_ai_analysis(valor_usd: float, valor_eur: float, sp500: float = 0, dxy: float = 0) -> dict:
     """
     Chama a OpenAI GPT-4.1-mini para análise de câmbio com contexto global (NYSE).
+    O cache é de 1 hora para economizar créditos.
     """
     v_usd = round(valor_usd, 3)
     v_eur = round(valor_eur, 3)

@@ -119,9 +119,10 @@ class MarketEngineB3:
             return None, 0, 0
 
     def _fetch_yfinance_com_historico(self, ticker):
-        """Busca 5 dias de histórico. Retorna (preco_atual, preco_anterior, volume)."""
+        """Busca 1 mês de histórico para análise técnica robusta. Retorna (preco_atual, preco_anterior, volume)."""
         try:
-            dados = yf.download(ticker, period="5d", interval="1d", progress=False, threads=False)
+            # Puxa 1 mês para garantir que o Robô tenha histórico (MM20, MM50) imediatamente
+            dados = yf.download(ticker, period="1mo", interval="1d", progress=False, threads=False)
             if dados.empty:
                 return None, 0, 0
 
