@@ -55,8 +55,8 @@ def render():
         st.metric("S&P 500 (NYSE)", f"{sp_val:,.2f}", f"{sp_var:+.2f}%")
     
     with c_dxy:
-        dxy_val = engine.precos.get("DX=F", 0)
-        dxy_var = engine.variacao.get("DX=F", 0)
+        dxy_val = engine.precos.get("DX-Y.NYB", 0)
+        dxy_var = engine.variacao.get("DX-Y.NYB", 0)
         st.metric("Dólar Index (DXY)", f"{dxy_val:.2f}", f"{dxy_var:+.2f}%", delta_color="inverse")
     
     with c_corr:
@@ -119,10 +119,11 @@ def render():
         st.markdown(f"#### 📈 Gráfico de Performance: {search_ticker}")
         hist = list(engine.historico[search_ticker])
         
-        if hist:
+        if hist and len(hist) > 1:
+            cor = engine.ATIVOS.get(search_ticker, {}).get("cor", "#4B7BEC")
             fig, ax = plt.subplots(figsize=(10, 4))
-            ax.plot(hist, color=engine.ATIVOS[search_ticker]["cor"], linewidth=2)
-            ax.fill_between(range(len(hist)), hist, alpha=0.1, color=engine.ATIVOS[search_ticker]["cor"])
+            ax.plot(hist, color=cor, linewidth=2)
+            ax.fill_between(range(len(hist)), hist, alpha=0.1, color=cor)
             
             # Médias Móveis se houver dados
             if len(hist) >= 20:
@@ -133,7 +134,7 @@ def render():
             ax.grid(True, alpha=0.2)
             st.pyplot(fig)
         else:
-            st.info("Aguardando coleta de dados históricos...")
+            st.info("Aguardando coleta de dados históricos... Clique em 'Atualizar Agora' para carregar.")
 
     # --- TAB 3: SINAIS ---
     with tab3:

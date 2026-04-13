@@ -89,81 +89,65 @@ class MarketEngineB3:
         todos = {**self.ATIVOS, **self.GLOBAL_ATIVOS}
         for ticker in todos.keys():
             try:
-                fonte = self.ATIVOS[ticker].get("fonte", "yfinance")
-                if fonte == "brapi":
-                    preco, volume = self._fetch_brapi(ticker)
-                    abertura = preco
-                else:
-                    preco, abertura, volume = self._fetch_yfinance(ticker)
-                
+                preco, abertura, volume = self._fetch_yfinance_com_historico(ticker)
                 if preco and preco > 0:
                     self.precos[ticker] = preco
-                    self.abertura[ticker] = abertura if abertura else preco
+                    self.abertura[ticker] = abertura if abertura and abertura > 0 else preco
                     self.maximos[ticker] = preco
                     self.minimos[ticker] = preco
                     self.historico[ticker].append(preco)
-                    # Calcula variação inicial
                     if self.abertura[ticker] > 0:
-                        self.variacao[ticker] = (preco - self.abertura[ticker]) / self.abertura[ticker]
+                        self.variacao[ticker] = (preco - self.abertura[ticker]) / self.abertura[ticker] * 100
             except:
                 pass
 
     def _fetch_brapi(self, ticker):
+        """Busca cotação via Brapi. Retorna (preco_atual, preco_abertura, volume)."""
         try:
             url = f"https://brapi.dev/api/quote/{ticker}"
             resp = requests.get(url, timeout=5)
             data = resp.json()
             if 'results' in data and len(data['results']) > 0:
                 result = data['results'][0]
-                return float(result.get('regularMarketPrice', 0)), float(result.get('regularMarketPrice', 0)), float(result.get('regularMarketVolume', 0))
+                preco = float(result.get('regularMarketPrice', 0))
+                abertura = float(result.get('regularMarketOpen', preco))
+                volume = float(result.get('regularMarketVolume', 0))
+                return preco, abertura, volume
             return None, 0, 0
         except:
             return None, 0, 0
 
-    def _fetch_yfinance(self, ticker):
+    def _fetch_yfinance_com_historico(self, ticker):
+        """Busca 5 dias de histórico. Retorna (preco_atual, preco_anterior, volume)."""
         try:
-            # Tenta pegar histórico recente para garantir que venha algo independente do horário
             dados = yf.download(ticker, period="5d", interval="1d", progress=False, threads=False)
-            
-            if dados.empty: return None, 0
+            if dados.empty:
+                return None, 0, 0
 
-            if 'Close' in dados.columns:
-                col_data = dados['Close']
-                
-                # Se for MultiIndex (comum no yfinance novo)
-                if isinstance(col_data, pd.DataFrame):
-                    prices = col_data.iloc[:, 0].dropna().values
-                else:
-                    prices = col_data.dropna().values
-                
-                # Busca reversa pelo último valor não-zero (atual) e o anterior (referência)
-                preco_atual = 0
-                preco_anterior = 0
-                
-                valid_prices = [p for p in reversed(prices) if p > 0]
-                if len(valid_prices) >= 1:
-                    preco_atual = float(valid_prices[0])
-                if len(valid_prices) >= 2:
-                    preco_anterior = float(valid_prices[1])
-                else:
-                    preco_anterior = preco_atual # Fallback se só houver um dado
-                
-                if preco_atual == 0: return None, 0, 0
+            col_data = dados['Close']
+            if isinstance(col_data, pd.DataFrame):
+                prices = col_data.iloc[:, 0].dropna().values
+            else:
+                prices = col_data.dropna().values
 
-                return preco_atual, preco_anterior, 0
-                if 'Volume' in dados.columns:
-                    vol_data = dados['Volume']
-                    vols = vol_data.iloc[:, 0].values if isinstance(vol_data, pd.DataFrame) else vol_data.values
-                    for v in reversed(vols):
-                        if v > 0:
-                            volume = float(v)
-                            break
-                
-                return preco, volume
-            
-            return None, 0
-        except Exception as e:
-            return None, 0
+            valid_prices = [float(p) for p in prices if p > 0]
+            if not valid_prices:
+                return None, 0, 0
+
+            preco_atual = valid_prices[-1]
+            preco_anterior = valid_prices[-2] if len(valid_prices) >= 2 else preco_atual
+
+            # Preenche histórico com os últimos dias para gráfico não ficar plano
+            for p in valid_prices:
+                self.historico[ticker].append(p)
+
+            return preco_atual, preco_anterior, 0
+        except:
+            return None, 0, 0
+
+    def _fetch_yfinance(self, ticker):
+        """Alias simplificado para tick_mercado. Retorna (preco, abertura_ref, volume)."""
+        return self._fetch_yfinance_com_historico(ticker)
 
     def tick_mercado(self):
         from components.notifications import send_telegram
@@ -172,30 +156,32 @@ class MarketEngineB3:
         with self.lock:
             todos = {**self.ATIVOS, **self.GLOBAL_ATIVOS}
             for ticker in todos.keys():
-                if ticker in self.ATIVOS:
-                    fonte = self.ATIVOS[ticker].get("fonte", "yfinance")
-                    novo, _, volume = self._fetch_brapi(ticker) if fonte == "brapi" else self._fetch_yfinance(ticker)
-                else:
-                    novo, _, volume = self._fetch_yfinance(ticker)
-                
-                if novo and novo > 0:
-                    # Alerta de Volatilidade NYSE (S&P 500)
-                    if ticker == "^GSPC":
-                        prev = self.precos.get(ticker)
-                        if prev:
-                            var_instantanea = (novo / prev - 1) * 100
-                            # Alerta se cair mais de 1.5% entre ticks (ou se for uma queda acumulada forte)
-                            if var_instantanea < -1.5 and (time.time() - self.last_alert_time > 3600):
-                                msg = f"⚠️ *ALERTA WALL STREET*: Queda brusca no S&P 500! ({var_instantanea:.2f}%)\nO mercado global está em estresse, dólar pode subir."
-                                send_telegram(msg)
-                                self.last_alert_time = time.time()
+                try:
+                    fonte = self.ATIVOS.get(ticker, {}).get("fonte", "yfinance")
+                    if fonte == "brapi" and ticker in self.ATIVOS:
+                        novo, abertura_ref, volume = self._fetch_brapi(ticker)
+                    else:
+                        novo, abertura_ref, volume = self._fetch_yfinance(ticker)
 
-                    self.precos[ticker] = novo
-                    self.maximos[ticker] = max(self.maximos.get(ticker, 0), novo)
-                    self.minimos[ticker] = min(self.minimos.get(ticker, 999999), novo)
-                    if self.abertura.get(ticker, 0) > 0:
-                        self.variacao[ticker] = (novo / self.abertura[ticker] - 1) * 100
-                    self.historico[ticker].append(novo)
+                    if novo and novo > 0:
+                        # Alerta de Volatilidade NYSE (S&P 500)
+                        if ticker == "^GSPC":
+                            prev = self.precos.get(ticker)
+                            if prev:
+                                var_instantanea = (novo / prev - 1) * 100
+                                if var_instantanea < -1.5 and (time.time() - self.last_alert_time > 3600):
+                                    msg = f"⚠️ *ALERTA WALL STREET*: Queda brusca no S&P 500! ({var_instantanea:.2f}%)\nO mercado global está em estresse, dólar pode subir."
+                                    send_telegram(msg)
+                                    self.last_alert_time = time.time()
+
+                        self.precos[ticker] = novo
+                        self.maximos[ticker] = max(self.maximos.get(ticker, 0), novo)
+                        self.minimos[ticker] = min(self.minimos.get(ticker, 999999), novo)
+                        if self.abertura.get(ticker, 0) > 0:
+                            self.variacao[ticker] = (novo / self.abertura[ticker] - 1) * 100
+                        self.historico[ticker].append(novo)
+                except:
+                    pass
             self.tick += 1
 
     def sinal(self, ticker):
