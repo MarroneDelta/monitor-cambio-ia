@@ -16,7 +16,7 @@ except ImportError:
     http_requests = None
 
 from config import (
-    TELEGRAM_TOKEN, TELEGRAM_CHAT_ID,
+    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
     WHATSAPP_API_KEY, WHATSAPP_PHONE,
     SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD,
 )
