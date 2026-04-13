@@ -53,21 +53,37 @@ def _fetch_from_awesomeapi(currency: str) -> Optional[float]:
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_current_rate(currency: str) -> Dict:
-    """Retorna cotação atual com metadados."""
-    rate = _fetch_from_awesomeapi(currency) or _fetch_from_api(currency)
+    """Retorna cotação atual com metadados e variação."""
+    rate = None
+    change_pct = 0.0
+    
+    # Tenta AwesomeAPI primeiro (traz variação nativa)
+    try:
+        pair = f"{currency}-{BASE_CURRENCY}"
+        r = requests.get(f"https://economia.awesomeapi.com.br/last/{pair}", timeout=8)
+        if r.status_code == 200:
+            key = pair.replace("-", "")
+            data = r.json()[key]
+            rate = float(data["bid"])
+            change_pct = float(data.get("pctChange", 0.0))
+    except:
+        pass
+
+    if not rate:
+        rate = _fetch_from_api(currency) # Fallback
 
     if rate:
         source = "live"
     else:
-        # Fallback com pequena variação aleatória para simular mercado
+        # Fallback demo
         base = _FALLBACK_RATES.get(currency, 5.0)
         rate = round(base + random.uniform(-0.01, 0.01), 4)
         source = "demo"
-        log.warning("Usando cotação demo para %s.", currency)
 
     return {
         "currency": currency,
         "rate": rate,
+        "change_pct": change_pct,
         "base": BASE_CURRENCY,
         "source": source,
         "timestamp": datetime.now().isoformat(),
