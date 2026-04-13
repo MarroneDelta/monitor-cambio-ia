@@ -14,16 +14,32 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("RobotWorker")
 
-def get_current_rate_awesome(currency: str) -> float:
-    """Busca cotação na AwesomeAPI (Grátis/Ilimitada)."""
+def get_current_rate(currency: str) -> float:
+    """Busca cotação com redundância (AwesomeAPI + HG Brasil) para o Worker."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    }
+    
+    # 1. Tenta AwesomeAPI
     try:
         pair = f"{currency}-BRL"
-        r = requests.get(f"https://economia.awesomeapi.com.br/last/{pair}", timeout=10)
+        r = requests.get(f"https://economia.awesomeapi.com.br/last/{pair}", timeout=10, headers=headers)
         if r.status_code == 200:
             key = pair.replace("-", "")
             return float(r.json()[key]["bid"])
     except Exception as e:
-        logger.error(f"Erro ao buscar cotação: {e}")
+        logger.warning(f"AwesomeAPI falhou no worker: {e}")
+
+    # 2. Tenta HG Brasil (Fallback)
+    try:
+        r = requests.get("https://api.hgbrasil.com/finance/quotations", timeout=10, headers=headers)
+        if r.status_code == 200:
+            currs = r.json()["results"]["currencies"]
+            if currency in currs:
+                return float(currs[currency]["buy"])
+    except Exception as e:
+        logger.error(f"HG Brasil falhou no worker: {e}")
+        
     return None
 
 def send_telegram_alert(message: str):
@@ -83,7 +99,7 @@ def run_worker():
             return
 
         # 2. Busca cotação atual
-        rate = get_current_rate_awesome(currency)
+        rate = get_current_rate(currency)
         if not rate:
             logger.error("❌ Não foi possível obter a cotação. APIs podem estar inacessíveis.")
             return
