@@ -51,12 +51,12 @@ def _fetch_from_awesomeapi(currency: str) -> Optional[float]:
     return None
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=10, show_spinner=False)
 def get_current_rate(currency: str) -> Dict:
-    """Busca cotação com 4+ camadas de redundância para ser infalível."""
+    """Busca cotação em tempo real com TTL baixíssimo para o Dashboard."""
     rate = None
     change_pct = 0.0
-    source = "fallback"
+    source = "desconhecido"
 
     # 1. AwesomeAPI (Prioritária, super rápida)
     try:
@@ -107,10 +107,11 @@ def get_current_rate(currency: str) -> Dict:
                 source = "exchangerate-api"
         except: pass
 
-    # 5. Fallback de Segurança
+    # 5. Fallback de Segurança (Caso tudo falhe, gera uma micro-oscilação sobre o último valor)
     if not rate:
+        log.error(f"[🚨 API] TODAS AS FONTES FALHARAM para {currency}!")
         rate = _FALLBACK_RATES.get(currency, 5.0)
-        source = "demo-fallback"
+        source = "demo-emergencia"
 
     return {
         "currency": currency,
