@@ -35,32 +35,30 @@ def build_alert_message(
 ) -> str:
     icon = "📉" if trigger == "min" else "📈"
     return (
-        f"🚨 *Alerta de Câmbio*\n\n"
-        f"A moeda *{currency}/BRL* atingiu o valor definido!\n\n"
-        f"💰 Valor atual: R$ {current_rate:.4f}\n"
-        f"📉 Mínimo configurado: R$ {min_target:.4f}\n"
-        f"📈 Máximo configurado: R$ {max_target:.4f}\n\n"
-        f"{icon} Gatilho: {'mínimo' if trigger == 'min' else 'máximo'} atingido\n\n"
-        f"⏱ Monitoramento válido por 24h.\n"
-        f"Você pode renovar o alerta no painel.\n\n"
-        f"— _Sistema de Monitoramento de Câmbio_\n"
-        f"_{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}_"
+        f"🚨 <b>Alerta de Câmbio</b>\n\n"
+        f"A moeda <b>{currency}/BRL</b> atingiu o valor definido!\n\n"
+        f"💰 Valor atual: <b>R$ {current_rate:.4f}</b>\n"
+        f"📉 Mínimo: R$ {min_target:.4f}\n"
+        f"📈 Máximo: R$ {max_target:.4f}\n\n"
+        f"{icon} Gatilho: <b>{'mínimo' if trigger == 'min' else 'máximo'} atingido</b>\n\n"
+        f"⏱ <i>Monitoramento ativo 24h</i>\n"
+        f"— Sistema de Monitoramento de Câmbio\n"
+        f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
     )
 
 
 # ── Canais de envio ──────────────────────────────────────────────────────────
 
-def send_telegram(message: str) -> bool:
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        log.warning("[⚠️ TELEGRAM] Erro: Token ou Chat ID ausentes nos Secrets.")
-        return False
     try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        log.warning(f"[🤖 TELEGRAM] Enviando para Chat ID {TELEGRAM_CHAT_ID}...")
-        
+        from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+        if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+            log.warning(f"[⚠️ TELEGRAM] Erro: Chaves não carregadas. (Token possui {len(TELEGRAM_BOT_TOKEN) if TELEGRAM_BOT_TOKEN else 0} chars)")
+            return False
+            
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         resp = http_requests.post(
             url,
-            json={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"},
+            json={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"},
             timeout=10,
         )
         

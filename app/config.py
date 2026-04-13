@@ -62,8 +62,8 @@ PAGES = {
 EXCHANGE_API_KEY = get_secret("EXCHANGE_API_KEY") or get_secret("EXCHANGE_RATE_API_KEY")
 NEWS_API_KEY = get_secret("NEWS_API_KEY")
 
-# ── Telegram ─────────────────────────────────────────────────────────────────
-TELEGRAM_TOKEN = get_secret("TELEGRAM_TOKEN") or get_secret("TELEGRAM_BOT_TOKEN")
+# ── Telegram ──
+TELEGRAM_BOT_TOKEN = get_secret("TELEGRAM_BOT_TOKEN") or get_secret("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = get_secret("TELEGRAM_CHAT_ID")
 
 # ── WhatsApp (CallMeBot) ─────────────────────────────────────────────────────
