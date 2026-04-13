@@ -196,15 +196,17 @@ def _robot_loop(config: dict):
         except Exception as exc:
             log.error("Robô erro: %s", exc)
 
-        # Smart Sleep: Acorda a cada 60s para ver se deve parar
+        # Smart Sleep: Procura o próximo horário, mas garante que o loop rode
         interval = get_seconds_until_next_check(config)
+        log.info(f"[🤖 ROBÔ] Aguardando {interval}s para próxima verificação.")
+        
         slept = 0
         while slept < interval:
-            time.sleep(60)
-            slept += 60
+            time.sleep(30) # Check de parada a cada 30s
+            slept += 30
             with _robot_lock:
                 if not _robot_state.get("running") or _robot_state.get("run_id") != run_id:
-                    return # Encerra o sono e a thread imediatamente
+                    return # Encerra imediatamente se o DNA mudar
 
     with _robot_lock:
         _robot_state["running"] = False

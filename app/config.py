@@ -6,12 +6,23 @@ from dotenv import load_dotenv
 _env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(_env_path)
 
+import streamlit as st
+
+def get_secret(key, default=""):
+    """Busca segredo priorizando st.secrets (Cloud) e depois os.getenv (Local)."""
+    try:
+        if key in st.secrets:
+            return st.secrets[key]
+    except:
+        pass
+    return os.getenv(key, default)
+
 # ── Configurações Gerais do App ──────────────────────────────────────────────
 APP_CONFIG = {
     "title": "Monitor de Câmbio",
     "icon": "💸",
-    "version": "1.2.0",
-    "refresh_interval": 43200,      # segundos entre verificações (12 horas)
+    "version": "1.2.1",
+    "refresh_interval": 3600,       # segundos entre verificações (1 hora)
     "robot_duration_h": 24,        # duração do robô em horas
 }
 
@@ -25,11 +36,11 @@ AUTH_CONFIG = {
 USERS = {
     "admin": {
         "name": "Administrador",
-        "email": os.getenv("ADMIN_EMAIL", "admin@exemplo.com"),
+        "email": get_secret("ADMIN_EMAIL", "admin@exemplo.com"),
     },
     "usuario": {
         "name": "Usuário Demo",
-        "email": os.getenv("DEMO_EMAIL", ""),
+        "email": get_secret("DEMO_EMAIL", ""),
     },
 }
 
@@ -48,22 +59,22 @@ PAGES = {
 }
 
 # ── Chaves de API ────────────────────────────────────────────────────────────
-EXCHANGE_API_KEY = os.getenv("EXCHANGE_API_KEY") or os.getenv("EXCHANGE_RATE_API_KEY") or ""
-NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
+EXCHANGE_API_KEY = get_secret("EXCHANGE_API_KEY") or get_secret("EXCHANGE_RATE_API_KEY")
+NEWS_API_KEY = get_secret("NEWS_API_KEY")
 
 # ── Telegram ─────────────────────────────────────────────────────────────────
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or ""
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+TELEGRAM_TOKEN = get_secret("TELEGRAM_TOKEN") or get_secret("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = get_secret("TELEGRAM_CHAT_ID")
 
 # ── WhatsApp (CallMeBot) ─────────────────────────────────────────────────────
-WHATSAPP_API_KEY = os.getenv("WHATSAPP_API_KEY", "")
-WHATSAPP_PHONE = os.getenv("WHATSAPP_PHONE", "")
+WHATSAPP_API_KEY = get_secret("WHATSAPP_API_KEY")
+WHATSAPP_PHONE = get_secret("WHATSAPP_PHONE")
 
 # ── E-mail SMTP ──────────────────────────────────────────────────────────────
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER") or os.getenv("EMAIL_USER") or ""
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD") or os.getenv("EMAIL_PASS") or ""
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+SMTP_HOST = get_secret("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(get_secret("SMTP_PORT", "587"))
+SMTP_USER = get_secret("SMTP_USER") or get_secret("EMAIL_USER")
+SMTP_PASSWORD = get_secret("SMTP_PASSWORD") or get_secret("EMAIL_PASS")
+OPENAI_API_KEY = get_secret("OPENAI_API_KEY")
+SUPABASE_URL = get_secret("SUPABASE_URL")
+SUPABASE_KEY = get_secret("SUPABASE_KEY")
