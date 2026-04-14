@@ -167,34 +167,56 @@ class MarketEngineB3:
         import time
 
         with self.lock:
-            todos = {**self.ATIVOS, **self.GLOBAL_ATIVOS}
-            for ticker in todos.keys():
+            # 1. Tenta buscar todos os ativos B3 em lote (Mais estável e rápido)
+            try:
+                tickers_b3 = ",".join(self.ATIVOS.keys())
+                url = f"https://brapi.dev/api/quote/{tickers_b3}"
+                resp = requests.get(url, timeout=7)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for res in data.get('results', []):
+                        t = res.get('symbol', '').replace('.SA', '')
+                        if t in self.ATIVOS:
+                            novo = float(res.get('regularMarketPrice', 0))
+                            if novo > 0:
+                                self._update_asset_data(t, novo, res.get('regularMarketPreviousClose', novo))
+            except: pass
+
+            # 2. Busca Índices Globais (S&P 500 e DXY via Proxy HG)
+            for ticker in self.GLOBAL_ATIVOS.keys():
                 try:
-                    novo, abertura_ref, volume = self._fetch_data(ticker)
-
+                    novo, abertura_ref, _ = self._fetch_data(ticker)
                     if novo and novo > 0:
-                        # Alerta Wall Street
-                        if ticker == "^GSPC":
-                            prev = self.precos.get(ticker)
-                            if prev and (novo != prev):
-                                var_inst = (novo / prev - 1) * 100
-                                if var_inst < -1.5 and (time.time() - self.last_alert_time > 3600):
-                                    send_telegram(f"⚠️ *ALERTA WALL STREET*: S&P 500 em queda! ({var_inst:.2f}%)")
-                                    self.last_alert_time = time.time()
-
-                        self.precos[ticker] = novo
-                        self.maximos[ticker] = max(self.maximos.get(ticker, 0), novo)
-                        self.minimos[ticker] = min(self.minimos.get(ticker, 999999), novo)
-                        
-                        # Garante que a abertura nunca seja zero se tivermos dados
-                        if self.abertura.get(ticker, 0) == 0:
-                            self.abertura[ticker] = abertura_ref if abertura_ref > 0 else novo
-
-                        if self.abertura.get(ticker, 0) > 0:
-                            self.variacao[ticker] = (novo / self.abertura[ticker] - 1) * 100
-                        self.historico[ticker].append(novo)
+                        self._update_asset_data(ticker, novo, abertura_ref)
                 except: pass
+
             self.tick += 1
+
+    def _update_asset_data(self, ticker, novo, abertura_ref):
+        """Helper para atualizar dicionários de preço de forma consistente."""
+        import time
+        from components.notifications import send_telegram
+
+        # Alerta Wall Street (Específico para S&P 500)
+        if ticker == "^GSPC":
+            prev = self.precos.get(ticker)
+            if prev and (novo != prev):
+                var_inst = (novo / prev - 1) * 100
+                if var_inst < -1.5 and (time.time() - self.last_alert_time > 3600):
+                    send_telegram(f"⚠️ *ALERTA WALL STREET*: S&P 500 em queda! ({var_inst:.2f}%)")
+                    self.last_alert_time = time.time()
+
+        self.precos[ticker] = novo
+        self.maximos[ticker] = max(self.maximos.get(ticker, 0), novo)
+        self.minimos[ticker] = min(self.minimos.get(ticker, 999999), novo)
+        
+        if self.abertura.get(ticker, 0) == 0:
+            self.abertura[ticker] = abertura_ref if abertura_ref > 0 else novo
+
+        if self.abertura.get(ticker, 0) > 0:
+            self.variacao[ticker] = (novo / self.abertura[ticker] - 1) * 100
+        
+        self.historico[ticker].append(novo)
 
     def sinal(self, ticker):
         hist = list(self.historico[ticker])
