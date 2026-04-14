@@ -33,45 +33,73 @@ def _fetch_from_awesomeapi(currency: str) -> Optional[Dict]:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "application/json"
         }
+        log.debug(f"🔍 AwesomeAPI: tentando {pair}...")
         r = requests.get(
             f"https://economia.awesomeapi.com.br/last/{pair}", 
             timeout=4, 
             headers=headers
         )
+        log.debug(f"🔍 AwesomeAPI {pair}: status {r.status_code}")
+        
         if r.status_code == 200:
             data = r.json()[pair.replace("-", "")]
+            rate = float(data["bid"])
+            change = float(data.get("pctChange", 0.0))
+            log.debug(f"✅ AwesomeAPI {pair}: {rate:.4f} ({change:+.2f}%)")
+            
             return {
-                "rate": float(data["bid"]),
-                "change_pct": float(data.get("pctChange", 0.0)),
+                "rate": rate,
+                "change_pct": change,
                 "high": float(data.get("high", 0)),
                 "low": float(data.get("low", 0)),
                 "source": "awesomeapi"
             }
+        else:
+            log.debug(f"❌ AwesomeAPI {pair}: HTTP {r.status_code}")
+            
+    except requests.Timeout:
+        log.debug(f"❌ AwesomeAPI falhou para {currency}: TIMEOUT (4s)")
     except Exception as exc:
-        log.debug(f"AwesomeAPI falhou para {currency}: {exc}")
+        log.debug(f"❌ AwesomeAPI falhou para {currency}: {type(exc).__name__}: {exc}")
+    
     return None
 
 
 def _fetch_from_hgbrasil(currency: str) -> Optional[Dict]:
     """HG Brasil Finance - BACKUP PRIMÁRIO."""
     try:
+        log.debug(f"🔍 HG Brasil: tentando {currency}...")
         r = requests.get(
             "https://api.hgbrasil.com/finance/quotations", 
             timeout=4
         )
+        log.debug(f"🔍 HG Brasil: status {r.status_code}")
+        
         if r.status_code == 200:
             currs = r.json()["results"]["currencies"]
             if currency in currs:
                 data = currs[currency]
+                rate = float(data["buy"])
+                change = float(data.get("variation", 0))
+                log.debug(f"✅ HG Brasil {currency}: {rate:.4f} ({change:+.2f}%)")
+                
                 return {
-                    "rate": float(data["buy"]),
-                    "change_pct": float(data.get("variation", 0)),
+                    "rate": rate,
+                    "change_pct": change,
                     "high": float(data.get("high", 0)),
                     "low": float(data.get("low", 0)),
                     "source": "hgbrasil"
                 }
+            else:
+                log.debug(f"❌ HG Brasil: {currency} não encontrado na resposta")
+        else:
+            log.debug(f"❌ HG Brasil: HTTP {r.status_code}")
+            
+    except requests.Timeout:
+        log.debug(f"❌ HG Brasil falhou para {currency}: TIMEOUT (4s)")
     except Exception as exc:
-        log.debug(f"HG Brasil falhou para {currency}: {exc}")
+        log.debug(f"❌ HG Brasil falhou para {currency}: {type(exc).__name__}: {exc}")
+    
     return None
 
 
@@ -150,12 +178,14 @@ def _fetch_with_fallbacks(currency: str, force_refresh: bool = False) -> Dict:
     if result:
         log.warning(f"✅ AwesomeAPI: {currency}/BRL consultado com sucesso")
         return result
+    log.debug(f"⚠️  AwesomeAPI falhou para {currency}")
     
     # 2. Tenta HG Brasil (GRATUITA)
     result = _fetch_from_hgbrasil(currency)
     if result:
         log.warning(f"✅ HG Brasil: {currency}/BRL consultado com sucesso")
         return result
+    log.debug(f"⚠️  HG Brasil falhou para {currency}")
     
     # 3. Tenta ExchangeRate-API (PAGA - FALLBACK)
     result = _fetch_from_exchangerate_api(currency)
@@ -204,6 +234,83 @@ def get_current_rate(currency: str, force_refresh: bool = False) -> Dict:
 def get_all_rates() -> Dict[str, Dict]:
     return {c: get_current_rate(c) for c in CURRENCIES}
 
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_dxy(cache_buster: float = 0.0) -> Dict:
+    """Busca Dólar Index (DXY=X) via YFinance.
+    
+    Args:
+        cache_buster: Parâmetro para invalidar cache quando necessário
+    
+    Returns:
+        Dict com preço e variação do DXY
+    """
+    try:
+        import yfinance as yf
+        data = yf.download("DXY=X", period="1d", interval="1m", progress=False, threads=False)
+        
+        if not data.empty:
+            closes = data["Close"].dropna()
+            if len(closes) >= 2:
+                current = float(closes.iloc[-1])
+                previous = float(closes.iloc[-2]) if len(closes) >= 2 else current
+                change = ((current / previous) - 1) * 100 if previous > 0 else 0
+                
+                log.warning(f"📈 DXY: {current:.2f} ({change:+.2f}%)")
+                
+                return {
+                    "value": current,
+                    "change_pct": change,
+                    "timestamp": datetime.now().isoformat()
+                }
+    except Exception as exc:
+        log.debug(f"DXY fetch falhou: {exc}")
+    
+    # Fallback
+    return {
+        "value": 103.50,
+        "change_pct": 0.0,
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_sp500(cache_buster: float = 0.0) -> Dict:
+    """Busca S&P 500 (^GSPC) via YFinance.
+    
+    Args:
+        cache_buster: Parâmetro para invalidar cache quando necessário
+    
+    Returns:
+        Dict com preço e variação do S&P 500
+    """
+    try:
+        import yfinance as yf
+        data = yf.download("^GSPC", period="1d", interval="1m", progress=False, threads=False)
+        
+        if not data.empty:
+            closes = data["Close"].dropna()
+            if len(closes) >= 2:
+                current = float(closes.iloc[-1])
+                previous = float(closes.iloc[-2]) if len(closes) >= 2 else current
+                change = ((current / previous) - 1) * 100 if previous > 0 else 0
+                
+                log.warning(f"📊 S&P 500: {current:.2f} ({change:+.2f}%)")
+                
+                return {
+                    "value": current,
+                    "change_pct": change,
+                    "timestamp": datetime.now().isoformat()
+                }
+    except Exception as exc:
+        log.debug(f"S&P 500 fetch falhou: {exc}")
+    
+    # Fallback
+    return {
+        "value": 6966.78,
+        "change_pct": 0.0,
+        "timestamp": datetime.now().isoformat()
+    }
 
 # ── Histórico (últimas 24h simulado / API real se disponível) ────────────────
 

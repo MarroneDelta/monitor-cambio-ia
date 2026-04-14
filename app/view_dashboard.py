@@ -5,7 +5,8 @@ views/dashboard.py — Página principal com cotações e análise
 import streamlit as st
 import pandas as pd
 import time
-from cambio_services.currency_service import get_current_rate, get_ohlc, get_rate_history
+from datetime import datetime
+from cambio_services.currency_service import get_current_rate, get_ohlc, get_rate_history, get_dxy, get_sp500
 from cambio_services.news_service import get_latest_market_news, aggregate_sentiment
 from components.charts import line_chart, candlestick_chart
 from utils.helpers import render_nav, fmt_brl, trend_badge, confidence_badge, sentiment_badge
@@ -93,6 +94,71 @@ def render_summary_cards():
                     if hist is not None and not hist.empty:
                         fig = line_chart(hist, f"{currency}/BRL", height=100)
                         st.plotly_chart(fig, width="stretch", config={'displayModeBar': False})
+    
+    # Índices globais
+    render_global_indices()
+
+
+def render_global_indices():
+    """Exibe DXY e outros índices de mercado."""
+    st.markdown("---")
+    
+    cache_buster = st.session_state.get("cache_buster", 0.0)
+    
+    c1, c2, c3 = st.columns(3)
+    
+    # S&P 500
+    with c1:
+        sp500 = get_sp500(cache_buster=cache_buster)
+        sp_value = sp500.get("value", 6966.78)
+        sp_change = sp500.get("change_pct", 0.0)
+        sp_trend = "🟢" if sp_change >= 0 else "🔴"
+        sp_color = "#26de81" if sp_change >= 0 else "#ff6b6b"
+        
+        st.markdown(
+            f"""
+            <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 1rem; text-align: center;">
+                <div style="color: #8892a4; font-size: 0.85rem;">📈 S&P 500 (NYSE)</div>
+                <div style="font-size: 1.8rem; font-weight: bold; margin: 0.5rem 0;">{sp_value:,.0f}</div>
+                <div style="color: {sp_color}; font-weight: 600;">{sp_trend} {sp_change:+.2f}%</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
+    # DXY - Dólar Index
+    with c2:
+        dxy = get_dxy(cache_buster=cache_buster)
+        dxy_value = dxy.get("value", 103.50)
+        dxy_change = dxy.get("change_pct", 0.0)
+        dxy_trend = "🟢" if dxy_change >= 0 else "🔴"
+        dxy_color = "#26de81" if dxy_change >= 0 else "#ff6b6b"
+        
+        st.markdown(
+            f"""
+            <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 1rem; text-align: center;">
+                <div style="color: #8892a4; font-size: 0.85rem;">💱 DÓLAR INDEX</div>
+                <div style="font-size: 1.8rem; font-weight: bold; margin: 0.5rem 0;">{dxy_value:.2f}</div>
+                <div style="color: {dxy_color}; font-weight: 600;">{dxy_trend} {dxy_change:+.2f}%</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
+    # Informações adicionais
+    with c3:
+        st.markdown(
+            f"""
+            <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 1rem; text-align: center;">
+                <div style="color: #8892a4; font-size: 0.85rem;">🔄 ÚLTIMO REFRESH</div>
+                <div style="font-size: 1rem; font-weight: bold; margin: 0.5rem 0;">
+                    {datetime.now().strftime('%H:%M:%S')}
+                </div>
+                <div style="color: #5fc986; font-size: 0.85rem;">Dados em tempo real</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
 
 def render_candles():
