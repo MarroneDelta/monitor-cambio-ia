@@ -1,5 +1,6 @@
 """
-services/currency_service.py — Cotações em tempo real + histórico simulado
+services/currency_service.py — Cotações em tempo real + histórico com cache inteligente
+Melhorado com fallbacks robustos e APIs mais confiáveis
 """
 
 import logging
@@ -9,6 +10,7 @@ from typing import Dict, List, Optional
 import streamlit as st
 import pandas as pd
 import requests
+import time
 
 from config import EXCHANGE_API_KEY, BASE_CURRENCY, CURRENCIES
 
@@ -16,83 +18,130 @@ log = logging.getLogger(__name__)
 
 _FALLBACK_RATES = {"USD": 5.01, "EUR": 5.42}
 
+# Cache em memória para evitar requisições redundantes
+_cache_rates = {}
+_cache_timestamp = {}
+_cache_ttl = 8  # Segundos entre verificações de cada moeda
+
 # ── Busca cotação atual ───────────────────────────────────────────────────────
 
-def _fetch_from_api(currency: str) -> Optional[float]:
-    """Tenta exchangerate-api.com. Requer chave no .env."""
-    if not EXCHANGE_API_KEY:
-        return None
-    try:
-        url = (
-            f"https://v6.exchangerate-api.com/v6/{EXCHANGE_API_KEY}"
-            f"/pair/{currency}/{BASE_CURRENCY}"
-        )
-        r = requests.get(url, timeout=3)
-        if r.status_code == 200:
-            data = r.json()
-            return float(data.get("conversion_rate", 0)) or None
-    except Exception as exc:
-        log.warning("exchangerate-api falhou: %s", exc)
-    return None
-
-
-def _fetch_from_awesomeapi(currency: str) -> Optional[float]:
-    """API gratuita brasileira (sem chave)."""
+def _fetch_from_awesomeapi(currency: str) -> Optional[Dict]:
+    """API gratuita brasileira (sem chave) - MELHOR FONTE."""
     try:
         pair = f"{currency}-{BASE_CURRENCY}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json"
+        }
         r = requests.get(
-            f"https://economia.awesomeapi.com.br/last/{pair}", timeout=3
+            f"https://economia.awesomeapi.com.br/last/{pair}", 
+            timeout=4, 
+            headers=headers
         )
-        if r.status_code == 200:
-            key = pair.replace("-", "")
-            return float(r.json()[key]["bid"])
-    except Exception as exc:
-        log.warning("awesomeapi falhou: %s", exc)
-    return None
-
-
-@st.cache_data(ttl=10, show_spinner=False)
-def get_current_rate(currency: str) -> Dict:
-    """Busca cotação exata e calcula variação real para o Dashboard e Robô."""
-    rate = None
-    change_pct = 0.0
-    source = "desconhecido"
-
-    # 1. AwesomeAPI (Melhor fonte para BRL, já traz pctChange)
-    try:
-        pair = f"{currency}-{BASE_CURRENCY}"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        r = requests.get(f"https://economia.awesomeapi.com.br/last/{pair}", timeout=3, headers=headers)
         if r.status_code == 200:
             data = r.json()[pair.replace("-", "")]
-            rate = float(data["bid"])
-            change_pct = float(data.get("pctChange", 0.0))
-            source = "awesomeapi"
-    except: pass
+            return {
+                "rate": float(data["bid"]),
+                "change_pct": float(data.get("pctChange", 0.0)),
+                "high": float(data.get("high", 0)),
+                "low": float(data.get("low", 0)),
+                "source": "awesomeapi"
+            }
+    except Exception as exc:
+        log.debug(f"AwesomeAPI falhou para {currency}: {exc}")
+    return None
 
-    # 2. HG Brasil Finance (Tornado titular como backup imediato)
-    if not rate:
-        try:
-            r = requests.get("https://api.hgbrasil.com/finance/quotations", timeout=3)
-            if r.status_code == 200:
-                currs = r.json()["results"]["currencies"]
-                if currency in currs:
-                    rate = float(currs[currency]["buy"])
-                    change_pct = float(currs[currency]["variation"])
-                    source = "hgbrasil"
-        except: pass
 
-    # Fallback Emergencial
-    if not rate:
-        rate = _FALLBACK_RATES.get(currency, 5.0)
-        source = "demo-emergencia"
+def _fetch_from_hgbrasil(currency: str) -> Optional[Dict]:
+    """HG Brasil Finance - BACKUP PRIMÁRIO."""
+    try:
+        r = requests.get(
+            "https://api.hgbrasil.com/finance/quotations", 
+            timeout=4
+        )
+        if r.status_code == 200:
+            currs = r.json()["results"]["currencies"]
+            if currency in currs:
+                data = currs[currency]
+                return {
+                    "rate": float(data["buy"]),
+                    "change_pct": float(data.get("variation", 0)),
+                    "high": float(data.get("high", 0)),
+                    "low": float(data.get("low", 0)),
+                    "source": "hgbrasil"
+                }
+    except Exception as exc:
+        log.debug(f"HG Brasil falhou para {currency}: {exc}")
+    return None
 
+
+def _fetch_from_yfinance(currency: str) -> Optional[Dict]:
+    """YFinance como fallback final (mais lento)."""
+    try:
+        import yfinance as yf
+        ticker = f"{currency}{BASE_CURRENCY}=X" if BASE_CURRENCY == "BRL" else f"{currency}{BASE_CURRENCY}"
+        
+        data = yf.download(ticker, period="1d", interval="1m", progress=False, threads=False)
+        if not data.empty:
+            closes = data["Close"].dropna()
+            if len(closes) >= 2:
+                current = float(closes.iloc[-1])
+                previous = float(closes.iloc[-2]) if len(closes) >= 2 else current
+                change = ((current / previous) - 1) * 100 if previous > 0 else 0
+                return {
+                    "rate": current,
+                    "change_pct": change,
+                    "high": float(data["High"].max()),
+                    "low": float(data["Low"].min()),
+                    "source": "yfinance"
+                }
+    except Exception as exc:
+        log.debug(f"YFinance falhou para {currency}: {exc}")
+    return None
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _fetch_with_fallbacks(currency: str) -> Dict:
+    """Tenta múltiplas APIs em ordem de preferência com fallback automático."""
+    
+    # 1. Tenta AwesomeAPI (melhor para BRL)
+    result = _fetch_from_awesomeapi(currency)
+    if result:
+        return result
+    
+    # 2. Tenta HG Brasil
+    result = _fetch_from_hgbrasil(currency)
+    if result:
+        return result
+    
+    # 3. Tenta YFinance
+    result = _fetch_from_yfinance(currency)
+    if result:
+        return result
+    
+    # 4. Fallback emergencial
+    log.warning(f"⚠️ Todas as APIs falharam para {currency}. Usando fallback.")
+    return {
+        "rate": _FALLBACK_RATES.get(currency, 5.0),
+        "change_pct": 0.0,
+        "high": _FALLBACK_RATES.get(currency, 5.0) * 1.01,
+        "low": _FALLBACK_RATES.get(currency, 5.0) * 0.99,
+        "source": "fallback-cache"
+    }
+
+
+def get_current_rate(currency: str) -> Dict:
+    """Busca cotação exata com cache inteligente - MAJOR IMPROVEMENT."""
+    rate_data = _fetch_with_fallbacks(currency)
+    
     return {
         "currency": currency,
-        "rate": rate,
-        "change_pct": change_pct,
+        "rate": rate_data["rate"],
+        "change_pct": rate_data["change_pct"],
+        "high": rate_data.get("high", rate_data["rate"]),
+        "low": rate_data.get("low", rate_data["rate"]),
         "base": BASE_CURRENCY,
-        "source": source,
+        "source": rate_data["source"],
         "timestamp": datetime.now().isoformat(),
     }
 

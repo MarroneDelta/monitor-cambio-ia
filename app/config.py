@@ -21,8 +21,8 @@ def get_secret(key, default=""):
 APP_CONFIG = {
     "title": "Monitor de Câmbio",
     "icon": "💸",
-    "version": "1.2.1",
-    "refresh_interval": 3600,       # segundos entre verificações (1 hora)
+    "version": "1.3.0",  # Versão melhorada com otimizações
+    "refresh_interval": 30,         # segundos entre verificações (30s para real-time)
     "robot_duration_h": 24,        # duração do robô em horas
 }
 

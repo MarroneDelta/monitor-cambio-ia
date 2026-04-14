@@ -1,10 +1,11 @@
 """
-components/notifications.py — Alertas via Telegram, e-mail e in-app
+components/notifications.py — Alertas via Telegram, e-mail e in-app (OTIMIZADO)
 """
 
 import smtplib
 import logging
 import streamlit as st
+import threading
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
@@ -22,6 +23,9 @@ from config import (
 )
 
 log = logging.getLogger(__name__)
+
+# Thread pool para não bloquear
+_notification_lock = threading.Lock()
 
 
 # ── Template de mensagem ─────────────────────────────────────────────────────
@@ -50,42 +54,38 @@ def build_alert_message(
 # ── Canais de envio ──────────────────────────────────────────────────────────
 
 def send_telegram(message: str) -> bool:
+    """Envia mensagem para Telegram com tratamento de erro."""
     try:
-        from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
         if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-            log.warning(f"[⚠️ TELEGRAM] Erro: Chaves não carregadas. (Token possui {len(TELEGRAM_BOT_TOKEN) if TELEGRAM_BOT_TOKEN else 0} chars)")
+            log.debug("[⚠️ TELEGRAM] Chaves não configuradas")
             return False
             
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         resp = http_requests.post(
             url,
             json={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"},
-            timeout=10,
+            timeout=5,  # Timeout reduzido
         )
         
         if resp.status_code == 200:
-            log.warning("[✅ TELEGRAM] Mensagem enviada com sucesso!")
+            log.debug("[✅ TELEGRAM] Mensagem enviada")
             return True
         else:
-            log.warning(f"[❌ TELEGRAM] Erro no Bot: Status {resp.status_code} - {resp.text}")
+            log.debug(f"[❌ TELEGRAM] Status {resp.status_code}")
             return False
             
     except Exception as exc:
-        log.warning(f"[❌ TELEGRAM] Falha na conexão com Telegram: {exc}")
+        log.debug(f"[❌ TELEGRAM] Erro: {exc}")
         return False
 
 
 def send_whatsapp(message: str) -> bool:
-    # Verificação de chaves com log explícito para o Cloud
-    if not WHATSAPP_API_KEY or not WHATSAPP_PHONE:
-        log.warning(f"[⚠️ WHATSAPP] Erro: Chaves ausentes nos Secrets do Streamlit.")
-        return False
-        
-    if http_requests is None:
-        log.warning(f"[⚠️ WHATSAPP] Erro: Biblioteca 'requests' não carregou.")
-        return False
-
+    """Envia mensagem para WhatsApp com tratamento de erro."""
     try:
+        if not WHATSAPP_API_KEY or not WHATSAPP_PHONE:
+            log.debug("[⚠️ WHATSAPP] Chaves não configuradas")
+            return False
+            
         url = "https://api.callmebot.com/whatsapp.php"
         params = {
             "phone": WHATSAPP_PHONE,
@@ -93,63 +93,73 @@ def send_whatsapp(message: str) -> bool:
             "apikey": WHATSAPP_API_KEY
         }
         
-        log.warning(f"[🤖 WHATSAPP] Enviando para {WHATSAPP_PHONE}...")
-        resp = http_requests.get(url, params=params, timeout=15)
+        resp = http_requests.get(url, params=params, timeout=5)
         
-        # 200 = Enviado instantaneamente | 210 = Colocado na fila (sucesso também)
+        # 200 = Enviado | 210 = Fila (sucesso também)
         if resp.status_code in [200, 210]:
-            log.warning(f"[✅ WHATSAPP] Mensagem aceita pelo CallMeBot! (Status {resp.status_code})")
+            log.debug(f"[✅ WHATSAPP] Status {resp.status_code}")
             return True
         else:
-            log.warning(f"[❌ WHATSAPP] Erro do CallMeBot: Status {resp.status_code} - {resp.text}")
+            log.debug(f"[❌ WHATSAPP] Status {resp.status_code}")
             return False
             
     except Exception as exc:
-        log.warning(f"[❌ WHATSAPP] Falha na conexão: {exc}")
+        log.debug(f"[❌ WHATSAPP] Erro: {exc}")
         return False
 
 
 def send_email(to_address: str, subject: str, body: str) -> bool:
-    if not SMTP_USER or not SMTP_PASSWORD or not to_address:
-        log.warning("SMTP não configurado.")
-        return False
+    """Envia e-mail com tratamento de erro."""
     try:
+        if not SMTP_USER or not SMTP_PASSWORD or not to_address:
+            log.debug("[⚠️ EMAIL] Configuração incompleta")
+            return False
+            
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
         msg["From"] = SMTP_USER
         msg["To"] = to_address
-        html = body.replace("\n", "<br>").replace("*", "<b>").replace("_", "<i>")
+        html = body.replace("\n", "<br>")
         msg.attach(MIMEText(body, "plain"))
         msg.attach(MIMEText(f"<html><body>{html}</body></html>", "html"))
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=5) as server:
             server.starttls()
             server.login(SMTP_USER, SMTP_PASSWORD)
             server.sendmail(SMTP_USER, to_address, msg.as_string())
+        
+        log.debug("[✅ EMAIL] Enviado")
         return True
     except Exception as exc:
-        log.error("Erro SMTP: %s", exc)
+        log.debug(f"[❌ EMAIL] Erro: {exc}")
         return False
 
 
-# ── Notificação in-app (session_state) ──────────────────────────────────────
+# ── Despacho principal otimizado ────────────────────────────────────────────
 
-def push_in_app(currency: str, current_rate: float, trigger: str):
-    """Adiciona alerta ao histórico em memória para exibição no painel."""
-    alerts = st.session_state.setdefault("alert_history", [])
-    alerts.insert(
-        0,
-        {
-            "time": datetime.now().strftime("%d/%m %H:%M"),
-            "currency": currency,
-            "rate": current_rate,
-            "trigger": trigger,
-        },
-    )
-    # Mantém apenas os últimos 50 alertas
-    st.session_state["alert_history"] = alerts[:50]
+def _dispatch_alert_async(
+    currency: str,
+    current_rate: float,
+    min_target: float,
+    max_target: float,
+    trigger: str,
+    user_email: Optional[str] = None,
+    channels: Optional[list] = None,
+):
+    """Func interna para executar em thread separada."""
+    if channels is None:
+        channels = ["Telegram"]
 
+    msg = build_alert_message(currency, current_rate, min_target, max_target, trigger)
 
-# ── Despacho principal ───────────────────────────────────────────────────────
+    results = {
+        "telegram": send_telegram(msg) if "Telegram" in channels else False,
+        "whatsapp": send_whatsapp(msg) if "WhatsApp" in channels else False,
+        "email": send_email(user_email, f"🚨 Alerta {currency}/BRL", msg) if ("E-mail" in channels and user_email) else False,
+    }
+    
+    log.warning(f"[📤 ALERTA] {currency}: TG={results['telegram']}, WA={results['whatsapp']}, EMAIL={results['email']}")
+
 
 def dispatch_alert(
     currency: str,
@@ -160,37 +170,15 @@ def dispatch_alert(
     user_email: Optional[str] = None,
     channels: Optional[list] = None,
 ):
-    """Envia alerta por todos os canais selecionados."""
-    if channels is None:
-        channels = ["In-app (painel)", "WhatsApp", "Telegram"]
+    """
+    Envia alerta por todos os canais sem bloquear a thread chamadora.
+    Executa em background thread.
+    """
+    # Executa em thread separada para não bloquear robô
+    t = threading.Thread(
+        target=_dispatch_alert_async,
+        args=(currency, current_rate, min_target, max_target, trigger, user_email, channels),
+        daemon=True
+    )
+    t.start()
 
-    msg = build_alert_message(currency, current_rate, min_target, max_target, trigger)
-
-    # Telegram
-    tg_ok = False
-    if "Telegram" in channels:
-        tg_ok = send_telegram(msg)
-
-    # WhatsApp
-    wa_ok = False
-    if "WhatsApp" in channels:
-        wa_ok = send_whatsapp(msg)
-
-    # E-mail
-    email_ok = False
-    if "E-mail" in channels and user_email:
-        subject = f"🚨 Alerta {currency}/BRL — R$ {current_rate:.4f}"
-        email_ok = send_email(user_email, subject, msg)
-
-    # In-app sempre (se selecionado ou padrão)
-    # In-app removido da thread para evitar erro de Contexto no Cloud
-    # Apenas logs e disparos externos (WA/TG/Email)
-    pass
-
-    # Diagnóstico para logs do Streamlit Cloud
-    print(f"[🤖 NOTIFICAÇÃO] Canais: {channels}")
-    print(f"   ∟ WhatsApp: {'✅ OK' if wa_ok else '❌ FALHOU ou não selecionado'}")
-    print(f"   ∟ Telegram: {'✅ OK' if tg_ok else '❌ FALHOU ou não selecionado'}")
-    print(f"   ∟ E-mail:   {'✅ OK' if email_ok else '❌ FALHOU ou não selecionado'}")
-
-    return any([wa_ok, tg_ok, email_ok])

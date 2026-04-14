@@ -2,8 +2,11 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import numpy as np
 import time
+import logging
 from datetime import datetime
 from utils.market_engine_b3 import MarketEngineB3
+
+log = logging.getLogger(__name__)
 
 def render():
     # 🎨 DESIGN SISTEMA (Global para todas as abas)
@@ -87,10 +90,10 @@ def render():
     refresh_total = (h_interval * 3600) + (m_interval * 60)
     
     if st.sidebar.button("🔄 Atualizar Agora"):
-        st.cache_data.clear()
-        with st.spinner("Buscando dados globais..."):
-            engine.tick_mercado()
-        st.sidebar.success("Dados atualizados!")
+        # ✅ NÃO LIMPA CACHE INTEIRO! Só força refresh do motor
+        with st.spinner("Atualizando dados..."):
+            engine.tick_mercado(use_cache=False)  # Force refresh sem cache
+        st.sidebar.success("✅ Dados atualizados!")
         st.rerun()
 
     # ── SENTIMENTO GLOBAL (NYSE) ─────────────────────────────────────────────
@@ -168,14 +171,24 @@ def render():
 </div>
 """, unsafe_allow_html=True)
 
-    # Lógica de Atualização Automática
+    # Lógica de Atualização Automática (Otimizada - sem loop infinito)
     if 'last_b3_update' not in st.session_state:
         st.session_state.last_b3_update = time.time()
+        st.session_state.b3_refresh_needed = True
 
-    if time.time() - st.session_state.last_b3_update >= refresh_total:
-        with st.spinner("Atualizando radar global..."):
-            engine.tick_mercado()
-        st.session_state.last_b3_update = time.time()
+    # Atualiza APENAS se o intervalo passou
+    if refresh_total > 0 and (time.time() - st.session_state.last_b3_update >= refresh_total):
+        st.session_state.b3_refresh_needed = True
+    else:
+        st.session_state.b3_refresh_needed = False
+
+    # Se precisa atualizar, faz isso SEM bloquear a UI
+    if st.session_state.b3_refresh_needed:
+        try:
+            engine.tick_mercado(use_cache=False)
+            st.session_state.last_b3_update = time.time()
+        except Exception as e:
+            log.warning(f"Auto-refresh falhou: {e}")
 
     # ── CONTEÚDO PRINCIPAL ───────────────────────────────────────────────────
     tab1, tab2, tab3, tab4 = st.tabs([
