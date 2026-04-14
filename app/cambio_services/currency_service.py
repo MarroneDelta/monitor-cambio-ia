@@ -196,7 +196,7 @@ def get_all_rates() -> Dict[str, Dict]:
 # ── Histórico (últimas 24h simulado / API real se disponível) ────────────────
 
 @st.cache_data(ttl=600, show_spinner=False)
-def get_rate_history(currency: str, hours: int = 24) -> pd.DataFrame:
+def get_rate_history(currency: str, hours: int = 24, cache_buster: float = 0.0) -> pd.DataFrame:
     """Retorna histórico real da AwesomeAPI (últimos 30 dias de fechamento)."""
     try:
         pair = f"{currency}-{BASE_CURRENCY}"

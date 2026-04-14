@@ -24,7 +24,8 @@ def render():
         )
     with btn_col:
         if st.button("🔄 Atualizar", key="btn_refresh", width="stretch", type="primary"):
-            # ✅ Apenas limpa session state, cache é gerenciado naturalmente
+            # ✅ Força recarregar dados - invalida cache de histórico
+            st.session_state["cache_buster"] = time.time()  # Cache buster para get_rate_history
             st.session_state.pop("engine_b3", None)
             st.session_state.pop("last_ai_analysis", None)
             st.rerun()
@@ -81,7 +82,8 @@ def render_summary_cards():
                         unsafe_allow_html=True
                     )
                     # Mini gráfico de linha (Sparkline)
-                    hist = get_rate_history(currency, hours=24)
+                    cache_buster = st.session_state.get("cache_buster", 0.0)
+                    hist = get_rate_history(currency, hours=24, cache_buster=cache_buster)
                     if hist is not None and not hist.empty:
                         fig = line_chart(hist, f"{currency}/BRL", height=100)
                         st.plotly_chart(fig, width="stretch", config={'displayModeBar': False})
