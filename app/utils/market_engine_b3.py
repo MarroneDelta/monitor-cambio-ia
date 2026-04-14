@@ -1,6 +1,6 @@
 """
 Motor de Mercado B3 para o Radar de Ações.
-Extrai preços reais via Brapi e yfinance.
+Extrai preços reais via Brapi, HG Brasil e yfinance (fallback).
 """
 
 import pandas as pd
@@ -8,8 +8,10 @@ import numpy as np
 import random
 import threading
 import requests
+import os
+import streamlit as st
 from datetime import datetime, timedelta
-# import yfinance as yf (Removido para estabilidade no Cloud)
+import yfinance as yf
 from collections import deque
 import warnings
 
@@ -38,7 +40,7 @@ BLUE_LT   = "#E6F1FB"
 BLUE_DK   = "#0C447C"
 
 class MarketEngineB3:
-    """Motor de mercado HÍBRIDO: Brapi (real-time) + yfinance (com delay)."""
+    """Motor de mercado ULTRA-RESILIENTE: Brapi (Token) -> HG Brasil -> yfinance."""
 
     ATIVOS = {
         "ITUB4":     {"nome": "Itaú Unibanco",          "setor": "Banco",      "cor": BLUE,      "fonte": "brapi"},
@@ -72,132 +74,120 @@ class MarketEngineB3:
     ]
 
     def __init__(self):
+        # Tenta carregar o token da Brapi (Secrets ou Env)
+        try:
+            self.brapi_token = st.secrets.get("BRAPI_TOKEN", os.getenv("BRAPI_TOKEN", ""))
+        except:
+            self.brapi_token = os.getenv("BRAPI_TOKEN", "")
+
         self.precos   = {}
         self.abertura = {}
         self.maximos  = {}
         self.minimos  = {}
         self.historico= {k: deque(maxlen=120) for k in {**self.ATIVOS, **self.GLOBAL_ATIVOS}}
-        self.candles  = {k: deque(maxlen=60)  for k in self.ATIVOS}
-        self.volumes  = {k: deque(maxlen=60)  for k in self.ATIVOS}
         self.variacao = {k: 0.0 for k in {**self.ATIVOS, **self.GLOBAL_ATIVOS}}
+        self.last_fetch_source = {k: "brapi" for k in self.ATIVOS}
         self.lock     = threading.Lock()
         self.tick     = 0
-        self.last_alert_time = 0 # Para evitar spam de alertas
+        self.last_alert_time = 0
         self._init_precos()
 
     def _init_precos(self):
-        todos = {**self.ATIVOS, **self.GLOBAL_ATIVOS}
-        for ticker in todos.keys():
-            try:
-                preco, abertura, volume = self._fetch_data(ticker)
-                if preco and preco > 0:
-                    self.precos[ticker] = preco
-                    self.abertura[ticker] = abertura if abertura and abertura > 0 else preco
-                    self.maximos[ticker] = preco
-                    self.minimos[ticker] = preco
-                    self.historico[ticker].append(preco)
-                    if self.abertura[ticker] > 0:
-                        self.variacao[ticker] = (preco - self.abertura[ticker]) / self.abertura[ticker] * 100
-            except:
-                pass
+        self.tick_mercado()
 
     def _fetch_hg_indices(self):
-        """Busca índices globais via HG Brasil como redundância."""
         try:
             r = requests.get("https://api.hgbrasil.com/finance/quotations", timeout=3)
             if r.status_code == 200:
-                data = r.json()["results"]["stocks"]
-                return data
+                return r.json()["results"]
             return {}
         except: return {}
 
-    def _fetch_fallback(self, ticker):
-        """Removido yfinance. Mantendo fallback vazio ou via HG."""
-        return None, 0, 0
+    def _fetch_fallback_yf(self, ticker):
+        """Backup final via yfinance."""
+        try:
+            yf_ticker = ticker if ticker.endswith(".SA") or "^" in ticker else f"{ticker}.SA"
+            data = yf.download(yf_ticker, period="2d", interval="1d", progress=False, threads=False)
+            if not data.empty:
+                closes = data["Close"].dropna().values.flatten()
+                preco = float(closes[-1])
+                ref = float(closes[-2]) if len(closes) >= 2 else preco
+                return preco, ref, "yahoo"
+            return 0, 0, ""
+        except: return 0, 0, ""
 
     def _fetch_data(self, ticker):
-        """Busca cotação tentando Brapi -> Fallback HG/YFinance."""
-        # 1. Tenta Brapi (Ativos B3)
+        """Lógica Híbrida Individual (Fallback)."""
+        # 1. Tenta Brapi Individual
         try:
+            params = {}
+            if self.brapi_token: params['token'] = self.brapi_token
             url = f"https://brapi.dev/api/quote/{ticker}"
-            resp = requests.get(url, timeout=5)
+            resp = requests.get(url, params=params, timeout=5)
             data = resp.json()
             if 'results' in data and len(data['results']) > 0:
                 res = data['results'][0]
                 p = float(res.get('regularMarketPrice', 0))
                 r = float(res.get('regularMarketPreviousClose', p))
-                v = float(res.get('regularMarketVolume', 0))
-                if p > 0: return p, r, v
+                if p > 0: return p, r, "brapi"
         except: pass
 
-        # 2. Tenta HG Brasil (Índices Globais e Moedas para DXY)
+        # 2. Tenta HG Brasil (Para índices ou moedas)
         if ticker in ["^GSPC", "DXY"]:
             try:
-                r = requests.get("https://api.hgbrasil.com/finance/quotations", timeout=3)
-                if r.status_code == 200:
-                    hg = r.json()["results"]
-                    
+                hg = self._fetch_hg_indices()
+                if hg:
                     if ticker == "^GSPC":
-                        # Usa NASDAQ do HG como proxy de Wall Street (tem pontos e variação)
                         stk = hg["stocks"]["NASDAQ"]
                         p = float(stk["points"])
-                        v = float(stk["variation"])
-                        # Calcula um fechamento de referência a partir da variação
-                        ref = p / (1 + (v/100))
-                        return p, ref, 0
-                    
+                        ref = p / (1 + (float(stk["variation"])/100))
+                        return p, ref, "hg_brasil"
                     if ticker == "DXY":
-                        # DXY Sintético: Média das variações de moedas fortes (EUR, GBP, JPY) vs USD
                         currs = hg["currencies"]
-                        # Invertemos a variação pois o HG dá Moeda/BRL e queremos Moeda/USD aproximado
-                        v_eur = currs["EUR"]["variation"]
-                        v_gbp = currs["GBP"]["variation"]
-                        v_jpy = currs.get("JPY", {"variation": 0})["variation"]
-                        
-                        v_dxy = (v_eur + v_gbp + v_jpy) / 3
-                        # Para o DXY, mostramos 100 como base e a variação sintética
-                        return 100.0, 100.0 / (1 + (v_dxy/100)), 0
+                        v_dxy = (currs["EUR"]["variation"] + currs["GBP"]["variation"] + currs.get("JPY", {"variation":0})["variation"]) / 3
+                        return 100.0, 100.0 / (1 + (v_dxy/100)), "hg_brasil"
             except: pass
 
-        # 3. Fallback Final (YFinance)
-        return self._fetch_fallback(ticker)
+        # 3. yfinance (Último recurso)
+        return self._fetch_fallback_yf(ticker)
 
     def tick_mercado(self):
         from components.notifications import send_telegram
         import time
 
         with self.lock:
-            # 1. Tenta buscar todos os ativos B3 em lote (Mais estável e rápido)
+            # --- FASE 1: Busca em Lote (Brapi) ---
             try:
-                tickers_b3 = ",".join(self.ATIVOS.keys())
-                url = f"https://brapi.dev/api/quote/{tickers_b3}"
-                resp = requests.get(url, timeout=7)
+                tickers_str = ",".join(self.ATIVOS.keys())
+                params = {}
+                if self.brapi_token: params['token'] = self.brapi_token
+                url = f"https://brapi.dev/api/quote/{tickers_str}"
+                resp = requests.get(url, params=params, timeout=7)
                 if resp.status_code == 200:
-                    data = resp.json()
-                    for res in data.get('results', []):
+                    results = resp.json().get('results', [])
+                    for res in results:
                         t = res.get('symbol', '').replace('.SA', '')
                         if t in self.ATIVOS:
-                            novo = float(res.get('regularMarketPrice', 0))
-                            if novo > 0:
-                                self._update_asset_data(t, novo, res.get('regularMarketPreviousClose', novo))
+                            p = float(res.get('regularMarketPrice', 0))
+                            if p > 0:
+                                self._update_asset_data(t, p, res.get('regularMarketPreviousClose', p), "brapi")
             except: pass
 
-            # 2. Busca Índices Globais (S&P 500 e DXY via Proxy HG)
-            for ticker in self.GLOBAL_ATIVOS.keys():
-                try:
-                    novo, abertura_ref, _ = self._fetch_data(ticker)
-                    if novo and novo > 0:
-                        self._update_asset_data(ticker, novo, abertura_ref)
-                except: pass
+            # --- FASE 2: Fallback para Zeros e Globais ---
+            todos = {**self.ATIVOS, **self.GLOBAL_ATIVOS}
+            for t in todos.keys():
+                # Se o preço ainda for 0 or None, tenta individualmente (Fallback)
+                if self.precos.get(t, 0) == 0:
+                    p, r, src = self._fetch_data(t)
+                    if p > 0:
+                        self._update_asset_data(t, p, r, src)
 
             self.tick += 1
 
-    def _update_asset_data(self, ticker, novo, abertura_ref):
-        """Helper para atualizar dicionários de preço de forma consistente."""
+    def _update_asset_data(self, ticker, novo, abertura_ref, fonte):
         import time
         from components.notifications import send_telegram
 
-        # Alerta Wall Street (Específico para S&P 500)
         if ticker == "^GSPC":
             prev = self.precos.get(ticker)
             if prev and (novo != prev):
@@ -217,13 +207,14 @@ class MarketEngineB3:
             self.variacao[ticker] = (novo / self.abertura[ticker] - 1) * 100
         
         self.historico[ticker].append(novo)
+        if ticker in self.ATIVOS:
+            self.ATIVOS[ticker]["fonte"] = fonte
 
     def sinal(self, ticker):
         hist = list(self.historico[ticker])
         var   = self.variacao.get(ticker, 0)
         preco = self.precos.get(ticker, 0)
 
-        # 🚀 Lógica de Início Rápido (Se não houver histórico, decide pela variação do dia)
         if len(hist) < 20:
             if var <= -5.0: return "ATENÇÃO", RED_LT, RED_DK
             elif var <= -2.0: return "COMPRA", TEAL_LITE, TEAL_DARK
@@ -232,28 +223,19 @@ class MarketEngineB3:
             elif var < -0.5: return "RECUO", RED_LT, RED_DK
             else: return "AGUARDAR", GRAY_LT, GRAY_DK
 
-        # 🧠 Lógica Avançada (Com histórico e Médias Móveis)
         mm20  = np.mean(hist[-20:])
         mm50  = np.mean(hist[-50:]) if len(hist) >= 50 else mm20
         
-        # 🟢 COMPRA: Preço recuando em tendência de alta ou queda de oportunidade
         if (var < -1.5 and preco > mm50) or (var < -3.5):
             return "COMPRA", TEAL_LITE, TEAL_DARK
-            
-        # 🟡 REALIZAR: Lucro satisfatório para o dia
         elif var >= 3.0 or preco > mm20 * 1.05:
             return "REALIZAR", AMBER_LT, AMBER_DK
-            
-        # 🔴 ATENÇÃO: Queda brusca que indica stop ou mudança de humor
         elif var <= -7.0:
             return "ATENÇÃO", RED_LT, RED_DK
-            
-        # 🔵 TENDÊNCIA: Caso não seja compra/venda, mas esteja em boa direção
         elif preco > mm20 * 1.01:
             return "ALTA", BLUE_LT, BLUE_DK
         elif preco < mm20 * 0.99:
             return "RECUO", RED_LT, RED_DK
-            
         return "AGUARDAR", GRAY_LT, GRAY_DK
 
     def evento_aleatorio(self):
