@@ -135,8 +135,15 @@ def _fetch_from_exchangerate_api(currency: str) -> Optional[Dict]:
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def _fetch_with_fallbacks(currency: str) -> Dict:
-    """Tenta múltiplas APIs em ordem de preferência com fallback automático."""
+def _fetch_with_fallbacks(currency: str, force_refresh: bool = False) -> Dict:
+    """Tenta múltiplas APIs em ordem de preferência com fallback automático.
+    
+    Args:
+        currency: Moeda a buscar (USD, EUR, etc)
+        force_refresh: Se True, ignora cache (usa cache_buster do session_state)
+    """
+    # force_refresh é apenas para invalidar o cache do @st.cache_data
+    # Seu valor muda a cada clique em "Atualizar", forçando nova execução
     
     # 1. Tenta AwesomeAPI (melhor para BRL, GRATUITA)
     result = _fetch_from_awesomeapi(currency)
@@ -173,9 +180,14 @@ def _fetch_with_fallbacks(currency: str) -> Dict:
     }
 
 
-def get_current_rate(currency: str) -> Dict:
-    """Busca cotação exata com cache inteligente - MAJOR IMPROVEMENT."""
-    rate_data = _fetch_with_fallbacks(currency)
+def get_current_rate(currency: str, force_refresh: bool = False) -> Dict:
+    """Busca cotação exata com cache inteligente - MAJOR IMPROVEMENT.
+    
+    Args:
+        currency: Moeda (USD, EUR, etc)
+        force_refresh: Se True, força busca na API mesmo dentro do TTL
+    """
+    rate_data = _fetch_with_fallbacks(currency, force_refresh=force_refresh)
     
     return {
         "currency": currency,

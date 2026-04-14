@@ -24,8 +24,9 @@ def render():
         )
     with btn_col:
         if st.button("🔄 Atualizar", key="btn_refresh", width="stretch", type="primary"):
-            # ✅ Força recarregar dados - invalida cache de histórico
+            # ✅ Força recarregar dados - invalida TODOS os caches
             st.session_state["cache_buster"] = time.time()  # Cache buster para get_rate_history
+            st.session_state["force_refresh_rate"] = True    # Force refresh para cotações
             st.session_state.pop("engine_b3", None)
             st.session_state.pop("last_ai_analysis", None)
             st.rerun()
@@ -51,9 +52,14 @@ def render():
 def render_summary_cards():
     c1, c2 = st.columns(2)
     
+    # Verifica se deve fazer refresh forçado das taxas
+    force_refresh = st.session_state.get("force_refresh_rate", False)
+    if force_refresh:
+        st.session_state["force_refresh_rate"] = False  # Usa apenas uma vez
+    
     for currency, col in zip(["USD", "EUR"], [c1, c2]):
         with col:
-            res = get_current_rate(currency)
+            res = get_current_rate(currency, force_refresh=force_refresh)
             if res:
                 rate = res.get("rate", 0.0)
                 change = res.get("change_pct", 0.0)
