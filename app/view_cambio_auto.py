@@ -105,10 +105,12 @@ def _robot_loop(config: dict):
         expires = expires.replace(tzinfo=None)
 
     while datetime.utcnow() < expires:
-        # CHECK DE SEGURANÇA
+        # CHECK DE SEGURANÇA (Resiliente a novas sessões)
         with _robot_lock:
-            if not _robot_state.get("running") or _robot_state.get("run_id") != run_id:
-                log.warning(f"[🤖 ROBÔ] DNA inválido ou parada solicitada. Encerrando thread ({run_id})...")
+            # O robô agora confia no estado global 'running'
+            # Se alguém pedir explicitamente para parar (expired), ele para.
+            if _robot_state.get("expired"):
+                log.warning(f"[🤖 ROBÔ] Parada solicitada. Encerrando thread ({run_id})...")
                 break
 
         try:
@@ -184,20 +186,24 @@ def _start_robot(config: dict, skip_db: bool = False):
     new_run_id = str(uuid.uuid4())
     config["run_id"] = new_run_id
     
-    t = threading.Thread(target=_robot_loop, args=(config,), daemon=True)
-    t.start()
     with _robot_lock:
         _robot_state.update({
             "run_id":       new_run_id,
             "running":      True,
             "expired":      False,
             "last_trigger": None,
-            "thread":       t,
             "config":       config,
             "last_rate":    None,
             "last_check":   None,
             "started_at":   datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
         })
+    
+    t = threading.Thread(target=_robot_loop, args=(config,), daemon=True)
+    t.start()
+    
+    with _robot_lock:
+        _robot_state["thread"] = t
+
     if not skip_db:
         save_robot_state_to_db(config, True)
 
