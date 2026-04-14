@@ -162,9 +162,9 @@ def render():
 <div style="font-size: 0.85rem; color: #D3D1C7; line-height: 1.5;">
     O <b style="color: #378ADD;">Sentimento Global</b> é o motor que move o câmbio. 
     <br><br>
-    • <b style="color: #1D9E75;">Risk-On:</b> Quando o S&P 500 (EUA) <span style="color: #1D9E75;">sobe</span>, o mundo está otimista. Investidores vendem Dólar para comprar ações. Isso faz o nosso <b style="color: #1D9E75;">Dólar cair</b> e a nossa <b style="color: #1D9E75;">Bolsa subir</b>. 🚀
+    • <b style="color: #1D9E75;">Risk-On:</b> Quando o S&P 500 (EUA) <span style="color: #1D9E75;">sobe</span>, o mundo está otimista. Investidores vendem Dólar para comprar ações. Isso faz o <b style="color: #1D9E75;">Dólar cair</b> e a nossa <b style="color: #1D9E75;">Bolsa subir</b>. 🚀
     <br><br>
-    • <b style="color: #E24B4A;">Risk-Off:</b> Quando o S&P 500 <span style="color: #E24B4A;">cai</span> e o Dólar Global (DXY) <span style="color: #E24B4A;">sobe</span>, o mercado está com medo. O dinheiro foge para a segurança, o que pressiona o nosso <b style="color: #E24B4A;">Dólar para cima</b> e a nossa <b style="color: #E24B4A;">Bolsa para baixo</b>. 🛡️
+    • <b style="color: #E24B4A;">Risk-Off:</b> Quando o S&P 500 <span style="color: #E24B4A;">cai</span> e o Dólar Global (DXY) <span style="color: #E24B4A;">sobe</span>, o mercado está com medo. O dinheiro foge para a segurança, o que pressiona o <b style="color: #E24B4A;">Dólar para cima</b> e a nossa <b style="color: #E24B4A;">Bolsa para baixo</b>. 🛡️
 </div>
 """, unsafe_allow_html=True)
 
