@@ -100,27 +100,70 @@ def _fetch_from_yfinance(currency: str) -> Optional[Dict]:
     return None
 
 
+def _fetch_from_exchangerate_api(currency: str) -> Optional[Dict]:
+    """ExchangeRate-API - FALLBACK (Consumir quota com moderação)."""
+    if not EXCHANGE_API_KEY:
+        log.debug(f"ExchangeRate-API: Chave não configurada")
+        return None
+    
+    try:
+        url = (
+            f"https://v6.exchangerate-api.com/v6/{EXCHANGE_API_KEY}"
+            f"/pair/{currency}/{BASE_CURRENCY}"
+        )
+        r = requests.get(url, timeout=4)
+        
+        if r.status_code == 200:
+            data = r.json()
+            if "conversion_rate" in data:
+                rate = float(data["conversion_rate"])
+                log.warning(f"📊 ExchangeRate-API chamada para {currency}: R$ {rate:.4f} (CONSUMINDO QUOTA)")
+                return {
+                    "rate": rate,
+                    "change_pct": 0.0,  # ExchangeRate-API não fornece variação
+                    "high": rate * 1.01,
+                    "low": rate * 0.99,
+                    "source": "exchangerate-api (PAGA)"
+                }
+        else:
+            log.debug(f"ExchangeRate-API Status {r.status_code} para {currency}")
+            
+    except Exception as exc:
+        log.debug(f"ExchangeRate-API falhou para {currency}: {exc}")
+    
+    return None
+
+
 @st.cache_data(ttl=60, show_spinner=False)
 def _fetch_with_fallbacks(currency: str) -> Dict:
     """Tenta múltiplas APIs em ordem de preferência com fallback automático."""
     
-    # 1. Tenta AwesomeAPI (melhor para BRL)
+    # 1. Tenta AwesomeAPI (melhor para BRL, GRATUITA)
     result = _fetch_from_awesomeapi(currency)
     if result:
+        log.warning(f"✅ AwesomeAPI: {currency}/BRL consultado com sucesso")
         return result
     
-    # 2. Tenta HG Brasil
+    # 2. Tenta HG Brasil (GRATUITA)
     result = _fetch_from_hgbrasil(currency)
     if result:
+        log.warning(f"✅ HG Brasil: {currency}/BRL consultado com sucesso")
         return result
     
-    # 3. Tenta YFinance
+    # 3. Tenta ExchangeRate-API (PAGA - FALLBACK)
+    result = _fetch_from_exchangerate_api(currency)
+    if result:
+        log.warning(f"⚠️  ExchangeRate-API: {currency}/BRL - QUOTA CONSUMIDA!")
+        return result
+    
+    # 4. Tenta YFinance (GRATUITA mas lenta)
     result = _fetch_from_yfinance(currency)
     if result:
+        log.warning(f"⏳ YFinance: {currency}/BRL consultado (LENTO)")
         return result
     
-    # 4. Fallback emergencial
-    log.warning(f"⚠️ Todas as APIs falharam para {currency}. Usando fallback.")
+    # 5. Fallback emergencial
+    log.warning(f"🔴 TODAS as APIs falharam para {currency}. Usando fallback.")
     return {
         "rate": _FALLBACK_RATES.get(currency, 5.0),
         "change_pct": 0.0,
