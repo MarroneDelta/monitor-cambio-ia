@@ -207,16 +207,41 @@ class MarketEngineB3:
 
     def sinal(self, ticker):
         hist = list(self.historico[ticker])
-        if len(hist) < 20: return "AGUARDAR", GRAY_LT, GRAY_DK
-        preco = hist[-1]
+        var   = self.variacao.get(ticker, 0)
+        preco = self.precos.get(ticker, 0)
+
+        # 🚀 Lógica de Início Rápido (Se não houver histórico, decide pela variação do dia)
+        if len(hist) < 20:
+            if var <= -5.0: return "ATENÇÃO", RED_LT, RED_DK
+            elif var <= -2.0: return "COMPRA", TEAL_LITE, TEAL_DARK
+            elif var >= 3.5: return "REALIZAR", AMBER_LT, AMBER_DK
+            elif var > 0.5: return "SUBIDA", BLUE_LT, BLUE_DK
+            elif var < -0.5: return "RECUO", RED_LT, RED_DK
+            else: return "AGUARDAR", GRAY_LT, GRAY_DK
+
+        # 🧠 Lógica Avançada (Com histórico e Médias Móveis)
         mm20  = np.mean(hist[-20:])
         mm50  = np.mean(hist[-50:]) if len(hist) >= 50 else mm20
-        var   = self.variacao.get(ticker, 0)
-        if var < -5 and preco > mm50: return "COMPRA", TEAL_LITE, TEAL_DARK
-        elif var > 8: return "REALIZAR", AMBER_LT, AMBER_DK
-        elif var < -12: return "ATENÇÃO", RED_LT, RED_DK
-        elif preco > mm20 * 1.03: return "AGUARDAR", BLUE_LT, BLUE_DK
-        else: return "AGUARDAR", GRAY_LT, GRAY_DK
+        
+        # 🟢 COMPRA: Preço recuando em tendência de alta ou queda de oportunidade
+        if (var < -1.5 and preco > mm50) or (var < -3.5):
+            return "COMPRA", TEAL_LITE, TEAL_DARK
+            
+        # 🟡 REALIZAR: Lucro satisfatório para o dia
+        elif var >= 3.0 or preco > mm20 * 1.05:
+            return "REALIZAR", AMBER_LT, AMBER_DK
+            
+        # 🔴 ATENÇÃO: Queda brusca que indica stop ou mudança de humor
+        elif var <= -7.0:
+            return "ATENÇÃO", RED_LT, RED_DK
+            
+        # 🔵 TENDÊNCIA: Caso não seja compra/venda, mas esteja em boa direção
+        elif preco > mm20 * 1.01:
+            return "ALTA", BLUE_LT, BLUE_DK
+        elif preco < mm20 * 0.99:
+            return "RECUO", RED_LT, RED_DK
+            
+        return "AGUARDAR", GRAY_LT, GRAY_DK
 
     def evento_aleatorio(self):
         return random.choice(self.EVENTOS)
