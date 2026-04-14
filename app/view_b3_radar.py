@@ -142,14 +142,71 @@ def render():
     with tab1:
         st.markdown(f"#### ⚡ Cotações Atuais (Refresca cada {refresh_total}s)")
         
-        # Grid de cards (Métricas rápidas)
-        cols = st.columns(4)
+        # Grid de cards (Design Customizado Premium)
+        st.markdown("""
+            <style>
+                .radar-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                    gap: 20px;
+                    margin-bottom: 30px;
+                }
+                .asset-card {
+                    background: rgba(255, 255, 255, 0.03);
+                    border: 1px solid rgba(211, 209, 199, 0.1);
+                    border-radius: 12px;
+                    padding: 20px;
+                    transition: all 0.3s ease;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
+                }
+                .asset-card:hover {
+                    transform: translateY(-5px);
+                    background: rgba(255, 255, 255, 0.05);
+                    border-color: rgba(55, 138, 221, 0.4);
+                    box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+                }
+                .asset-ticker {
+                    color: #8892a4;
+                    font-size: 0.8rem;
+                    font-weight: 600;
+                    margin-bottom: 5px;
+                }
+                .asset-price {
+                    color: white;
+                    font-size: 1.4rem;
+                    font-weight: 700;
+                    margin: 5px 0;
+                }
+                .asset-var {
+                    font-size: 0.85rem;
+                    font-weight: 600;
+                }
+                .var-up { color: #1D9E75; }
+                .var-down { color: #E24B4A; }
+            </style>
+        """, unsafe_allow_html=True)
+
         tickers = list(engine.ATIVOS.keys())
-        for i, t in enumerate(tickers[:8]):
-            with cols[i % 4]:
-                p = engine.precos.get(t, 0)
-                v = engine.variacao.get(t, 0)
-                st.metric(label=f"{t}", value=f"R$ {p:.2f}", delta=f"{v:+.2f}%")
+        radar_html = '<div class="radar-grid">'
+        
+        for t in tickers[:8]:
+            p = engine.precos.get(t, 0)
+            v = engine.variacao.get(t, 0)
+            var_class = "var-up" if v >= 0 else "var-down"
+            icon = "▲" if v >= 0 else "▼"
+            
+            radar_html += f"""
+                <div class="asset-card">
+                    <div class="asset-ticker">{t}</div>
+                    <div class="asset-price">R$ {p:,.2f}</div>
+                    <div class="asset-var {var_class}">{icon} {abs(v):.2f}%</div>
+                </div>
+            """
+        
+        radar_html += '</div>'
+        st.markdown(radar_html, unsafe_allow_html=True)
 
         st.markdown("---")
         # Tabela Detalhada
