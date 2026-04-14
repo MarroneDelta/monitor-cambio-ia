@@ -142,8 +142,9 @@ def render():
     with tab1:
         st.markdown(f"#### ⚡ Cotações Atuais (Refresca cada {refresh_total}s)")
         
-        # Grid de cards (Design Customizado Premium)
-        st.markdown("""
+        # Grid de cards (Design Customizado Premium - Corrigido)
+        tickers = list(engine.ATIVOS.keys())
+        radar_html = """
             <style>
                 .radar-grid {
                     display: grid;
@@ -186,10 +187,8 @@ def render():
                 .var-up { color: #1D9E75; }
                 .var-down { color: #E24B4A; }
             </style>
-        """, unsafe_allow_html=True)
-
-        tickers = list(engine.ATIVOS.keys())
-        radar_html = '<div class="radar-grid">'
+            <div class="radar-grid">
+        """
         
         for t in tickers[:8]:
             p = engine.precos.get(t, 0)
