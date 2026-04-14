@@ -24,12 +24,9 @@ def render():
         )
     with btn_col:
         if st.button("🔄 Atualizar", key="btn_refresh", width="stretch", type="primary"):
-            # ✅ Sem limpeza de cache - deixar Streamlit gerenciar
+            # ✅ Apenas limpa session state, cache é gerenciado naturalmente
             st.session_state.pop("engine_b3", None)
-            # Force refresh das cotações
-            from cambio_services.currency_service import get_current_rate as get_rate
-            get_rate.__wrapped__("USD")  # Contorna cache
-            get_rate.__wrapped__("EUR")
+            st.session_state.pop("last_ai_analysis", None)
             st.rerun()
     
     # Cards de resumo
