@@ -9,7 +9,7 @@ import random
 import threading
 import requests
 from datetime import datetime, timedelta
-import yfinance as yf
+# import yfinance as yf (Removido para estabilidade no Cloud)
 from collections import deque
 import warnings
 
@@ -112,17 +112,8 @@ class MarketEngineB3:
         except: return {}
 
     def _fetch_fallback(self, ticker):
-        """Busca via yfinance com proteção de cabeçalhos."""
-        try:
-            yf_ticker = ticker if ticker.endswith(".SA") or "^" in ticker else f"{ticker}.SA"
-            data = yf.download(yf_ticker, period="2d", interval="1d", progress=False, threads=False)
-            if not data.empty:
-                closes = data["Close"].dropna().values.flatten()
-                preco = float(closes[-1])
-                ref = float(closes[-2]) if len(closes) >= 2 else preco
-                return preco, ref, 0
-            return None, 0, 0
-        except: return None, 0, 0
+        """Removido yfinance. Mantendo fallback vazio ou via HG."""
+        return None, 0, 0
 
     def _fetch_data(self, ticker):
         """Busca cotação tentando Brapi -> Fallback HG/YFinance."""
