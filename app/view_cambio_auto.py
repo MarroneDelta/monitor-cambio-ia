@@ -114,8 +114,8 @@ def _robot_loop(config: dict):
                 break
 
         try:
-            # Busca cotação bypassando cache para ser instantâneo
-            rate_data = get_current_rate.__wrapped__(currency)
+            # Busca cotação forçando refresh (ignora cache de 60s)
+            rate_data = get_current_rate(currency, force_refresh=True)
             rate = float(rate_data.get("rate", 0.0))
             source = rate_data.get("source", "unknown")
             
