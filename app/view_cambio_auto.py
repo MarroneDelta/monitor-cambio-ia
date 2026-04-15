@@ -164,7 +164,10 @@ def _robot_loop(config: dict):
                     pass
             
         except Exception as exc:
-            log.error(f"Erro no loop do robô: {exc}")
+            log.error(f"❌ Erro no loop do robô: {type(exc).__name__}: {exc}")
+            # Se houver erro crítico, aguarda mais tempo antes de tentar novamente
+            time.sleep(5)
+            continue
 
         # Dorme 30 segundos
         interval = 30
