@@ -60,6 +60,7 @@ PAGES = {
 
 # ── Chaves de API ────────────────────────────────────────────────────────────
 EXCHANGE_API_KEY = get_secret("EXCHANGE_API_KEY") or get_secret("EXCHANGE_RATE_API_KEY")
+FINNHUB_API_KEY = get_secret("FINNHUB_API_KEY")
 NEWS_API_KEY = get_secret("NEWS_API_KEY")
 
 # ── Telegram ──

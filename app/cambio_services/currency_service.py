@@ -12,7 +12,7 @@ import pandas as pd
 import requests
 import time
 
-from config import EXCHANGE_API_KEY, BASE_CURRENCY, CURRENCIES
+from config import EXCHANGE_API_KEY, FINNHUB_API_KEY, BASE_CURRENCY, CURRENCIES
 
 log = logging.getLogger(__name__)
 
@@ -237,7 +237,7 @@ def get_all_rates() -> Dict[str, Dict]:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_dxy(cache_buster: float = 0.0) -> Dict:
-    """Busca Dólar Index (DXY=X) via YFinance.
+    """Busca Dólar Index (DXY) via Finnhub.
     
     Args:
         cache_buster: Parâmetro para invalidar cache quando necessário
@@ -245,26 +245,44 @@ def get_dxy(cache_buster: float = 0.0) -> Dict:
     Returns:
         Dict com preço e variação do DXY
     """
+    if not FINNHUB_API_KEY:
+        log.debug("Finnhub: Chave não configurada. Usando fallback para DXY.")
+        return {
+            "value": 103.50,
+            "change_pct": 0.0,
+            "timestamp": datetime.now().isoformat()
+        }
+    
     try:
-        import yfinance as yf
-        data = yf.download("DXY=X", period="1d", interval="1m", progress=False, threads=False)
+        # Finnhub quote endpoint para DXY
+        url = f"https://finnhub.io/api/v1/quote?symbol=DXY&token={FINNHUB_API_KEY}"
+        log.debug(f"🔍 Finnhub: tentando DXY...")
         
-        if not data.empty:
-            closes = data["Close"].dropna()
-            if len(closes) >= 2:
-                current = float(closes.iloc[-1])
-                previous = float(closes.iloc[-2]) if len(closes) >= 2 else current
-                change = ((current / previous) - 1) * 100 if previous > 0 else 0
+        r = requests.get(url, timeout=4)
+        log.debug(f"🔍 Finnhub DXY: status {r.status_code}")
+        
+        if r.status_code == 200:
+            data = r.json()
+            
+            # Finnhub retorna: c (current), d (change), dp (change %)
+            if "c" in data:
+                current = float(data["c"])
+                change_pct = float(data.get("dp", 0.0))  # dp = change percent
                 
-                log.warning(f"📈 DXY: {current:.2f} ({change:+.2f}%)")
+                log.warning(f"✅ Finnhub DXY: {current:.2f} ({change_pct:+.2f}%)")
                 
                 return {
                     "value": current,
-                    "change_pct": change,
+                    "change_pct": change_pct,
                     "timestamp": datetime.now().isoformat()
                 }
+        else:
+            log.debug(f"❌ Finnhub DXY: HTTP {r.status_code}")
+            
+    except requests.Timeout:
+        log.debug(f"❌ Finnhub DXY: TIMEOUT (4s)")
     except Exception as exc:
-        log.debug(f"DXY fetch falhou: {exc}")
+        log.debug(f"❌ Finnhub DXY falhou: {type(exc).__name__}: {exc}")
     
     # Fallback
     return {
@@ -276,7 +294,7 @@ def get_dxy(cache_buster: float = 0.0) -> Dict:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_sp500(cache_buster: float = 0.0) -> Dict:
-    """Busca S&P 500 (^GSPC) via YFinance.
+    """Busca S&P 500 (^GSPC) via Finnhub.
     
     Args:
         cache_buster: Parâmetro para invalidar cache quando necessário
@@ -284,26 +302,44 @@ def get_sp500(cache_buster: float = 0.0) -> Dict:
     Returns:
         Dict com preço e variação do S&P 500
     """
+    if not FINNHUB_API_KEY:
+        log.debug("Finnhub: Chave não configurada. Usando fallback para S&P 500.")
+        return {
+            "value": 6966.78,
+            "change_pct": 0.0,
+            "timestamp": datetime.now().isoformat()
+        }
+    
     try:
-        import yfinance as yf
-        data = yf.download("^GSPC", period="1d", interval="1m", progress=False, threads=False)
+        # Finnhub quote endpoint para S&P 500
+        url = f"https://finnhub.io/api/v1/quote?symbol=^GSPC&token={FINNHUB_API_KEY}"
+        log.debug(f"🔍 Finnhub: tentando S&P 500...")
         
-        if not data.empty:
-            closes = data["Close"].dropna()
-            if len(closes) >= 2:
-                current = float(closes.iloc[-1])
-                previous = float(closes.iloc[-2]) if len(closes) >= 2 else current
-                change = ((current / previous) - 1) * 100 if previous > 0 else 0
+        r = requests.get(url, timeout=4)
+        log.debug(f"🔍 Finnhub S&P 500: status {r.status_code}")
+        
+        if r.status_code == 200:
+            data = r.json()
+            
+            # Finnhub retorna: c (current), d (change), dp (change %)
+            if "c" in data:
+                current = float(data["c"])
+                change_pct = float(data.get("dp", 0.0))  # dp = change percent
                 
-                log.warning(f"📊 S&P 500: {current:.2f} ({change:+.2f}%)")
+                log.warning(f"✅ Finnhub S&P 500: {current:,.0f} ({change_pct:+.2f}%)")
                 
                 return {
                     "value": current,
-                    "change_pct": change,
+                    "change_pct": change_pct,
                     "timestamp": datetime.now().isoformat()
                 }
+        else:
+            log.debug(f"❌ Finnhub S&P 500: HTTP {r.status_code}")
+            
+    except requests.Timeout:
+        log.debug(f"❌ Finnhub S&P 500: TIMEOUT (4s)")
     except Exception as exc:
-        log.debug(f"S&P 500 fetch falhou: {exc}")
+        log.debug(f"❌ Finnhub S&P 500 falhou: {type(exc).__name__}: {exc}")
     
     # Fallback
     return {
